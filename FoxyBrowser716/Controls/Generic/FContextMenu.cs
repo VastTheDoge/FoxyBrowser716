@@ -199,6 +199,9 @@ public sealed partial class FContextMenu : UserControl
 
     private void CreateMixedLayout(MenuItem[] items)
     {
+        // if any item shows an icon (or a check mark), give the others an invisible one so the labels line up
+        var alignLabels = items.Any(i => i.Icon is not null || i.IsChecked is not null);
+
         foreach (var item in items)
         {
             if (item.IsSeparator)
@@ -217,8 +220,13 @@ public sealed partial class FContextMenu : UserControl
             }
 
             var icon = item.Icon;
-            if (icon is null && item.IsChecked == true)
-                icon = new MaterialIcon { Kind = MaterialIconKind.Check, Foreground = new SolidColorBrush(CurrentTheme.PrimaryForegroundColor) };
+            if (icon is null && (item.IsChecked == true || alignLabels))
+                icon = new MaterialIcon
+                {
+                    Kind = MaterialIconKind.Check,
+                    Foreground = new SolidColorBrush(CurrentTheme.PrimaryForegroundColor),
+                    Opacity = item.IsChecked == true ? 1 : 0,
+                };
 
             var button = new FTextButton
             {

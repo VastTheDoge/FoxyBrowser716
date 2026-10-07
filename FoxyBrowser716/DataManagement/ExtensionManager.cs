@@ -809,9 +809,15 @@ public static class ExtensionManager
 
             // match folders to what the profile already has loaded; anything missing (first run, or a
             // folder added since) is added to the profile in parallel
+            // match by the id seen earlier this session when there is one; names can be localized differently
+            var known = _extensions.TryGetValue(instance.Name, out var previous) ? previous.ToList() : [];
             List<(Extension folder, CoreWebView2BrowserExtension? loaded)> found = [];
             await foreach (var ex in GetFolderExtensions(extensionFolder))
-                found.Add((ex, currentExtensions.FirstOrDefault(e => IsNamesEqual(e.Name, ex.Manifest))));
+            {
+                var knownId = known.FirstOrDefault(k => string.Equals(k.FolderPath, ex.FolderPath, StringComparison.OrdinalIgnoreCase))?.Id;
+                found.Add((ex, currentExtensions.FirstOrDefault(e => e.Id == knownId)
+                               ?? currentExtensions.FirstOrDefault(e => IsNamesEqual(e.Name, ex.Manifest))));
+            }
 
             var added = await Task.WhenAll(found.Select(async pair =>
             {

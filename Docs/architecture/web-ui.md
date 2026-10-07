@@ -1,0 +1,96 @@
+# Web UI: themed engine UI, site permissions, downloads, history, private windows
+
+WebView2 ships its own Chromium UI for the page context menu, permission prompts, `alert`/`confirm`/`prompt`,
+HTTP sign-in and the download flyout. None of it follows FoxyBrowser themes, so each is replaced by themed UI
+drawn by the window that hosts the tab. Every replacement has a setting to fall back to the engine UI.
+
+## Flow
+
+```
+WebviewTab (one WebView2)            MainWindow (MainWindow.WebUi.cs)          Controls/WebUi
+  CoreWebView2Initialization  ──►  OnTabContextMenuRequested  ─────────►  FContextMenu (UseSolidBackground)
+  subscribes and forwards:         OnTabPermissionRequested   ─┐
+    ContextMenuRequested           OnTabScriptDialogOpening   ─┼──────►  WebPromptHost ─► WebPromptCard
+    PermissionRequested            OnTabBasicAuthentication…  ─┘
+    ScriptDialogOpening            OnTabDownloadStarting      ─────────►  DownloadManager.Track + DownloadsPanel
+    BasicAuthenticationRequested   ShowHistoryPanel / ShowToast ───────►  HistoryPanel, ToastHost
+    DownloadStarting
+```
+
+- `TabManager.Window` is the hosting `MainWindow` (passed to `TabManager.Create`), which is how a tab reaches it.
+- Each handler that shows UI takes the event's **deferral**, so the page waits while the user decides, and
+  completes it exactly once (guard flag) — on a button, or via `WebPromptSpec.Cancelled` when the tab or window
+  closes. Completing a deferral of a closed WebView throws, so cancellation is wrapped.
+- Placement: popups are children of `MainWindow.BorderGrid`. The context menu converts
+  `ContextMenuRequested.Location` from raw pixels to DIPs (`/ XamlRoot.RasterizationScale`) and then into
+  `BorderGrid` space; `FContextMenu.PlaceWithin` keeps it on screen. Prompts are centered at the top of `TabHolder`.
+
+## Prompts (`WebPromptHost`)
+
+Queued **per tab**; only the active tab's oldest prompt is visible (`SetActiveTab` on tab switch), so a
+background tab's dialog waits until you switch to it. Prompts never light-dismiss. `WebPromptSpec` describes
+title/message/icon, optional text input, optional user+password, optional check box and buttons;
+`WebPromptCard` renders it. Script dialogs only reach us while `BrowserSettings.ThemedDialogs` is on, because
+`ApplySettings` sets `AreDefaultScriptDialogsEnabled = !ThemedDialogs`.
+
+## Site permissions (`SitePermissionManager`, SitePermissions.json)
+
+Resolution for a `PermissionRequested`:
+
+1. a remembered decision for the request's origin (`scheme://host[:port]`) and kind;
+2. else the kind's default from settings (`LocationPermission`, `CameraPermission`, … : Ask/Allow/Block);
+3. else prompt (themed, with "Remember this decision", default from `RememberPermissionDecisions`).
+
+`SavesInProfile` is always set to `false` when FoxyBrowser decides, so our list is the source of truth and the
+engine keeps asking. Decisions the engine stored itself (older builds, or its own prompt while themed dialogs
+are off) are applied by the engine *before* `PermissionRequested` fires; the settings section lists them from
+`Profile.GetNonDefaultPermissionSettingsAsync()` with a Reset button (`SetPermissionStateAsync(..., Default)`).
+Remembering shows a toast pointing at Settings > Site Permissions.
+
+## Downloads (`DownloadManager`, Downloads.json)
+
+`OnTabDownloadStarting` sets `Handled` (hides the engine flyout; the download continues), optionally asks
+where to save (`FileSavePicker`; its empty placeholder file is deleted so WebView2 writes to that exact path),
+then `DownloadManager.Track` follows the `CoreWebView2DownloadOperation` events. The list persists; anything
+still running at shutdown is marked failed on next start (it cannot resume). Downloads started on the Chrome
+Web Store page are left to `ExtensionManager`. The profile's `DefaultDownloadFolderPath` follows the
+`DownloadFolder` setting (empty = the Downloads known folder).
+
+## History (`HistoryManager`, History.json)
+
+One entry per URL (title, favicon, first/last visit, visit count). Recorded from `NavigationCompleted`
+(success) and from same-document `SourceChanged` (single-page apps); title/favicon arrive later and update the
+entry. Only http/https/file URLs, never in private windows, and only while `SaveHistory` is on. Expired entries
+(`HistoryRetentionDays`) are pruned at startup only — pruning on change would fire per keystroke of the
+number box. Used by the history panel and the address-bar suggestions (`Search` ranks host-prefix matches,
+visit count and recency).
+
+`FoxyAutoSaverLockedList<T>` backs history, downloads and permissions: the UI thread mutates under a lock and
+the auto-saver serializes a snapshot, unlike `FoxyAutoSaverList<T>` which enumerates the live collection from
+the timer thread.
+
+## Private windows
+
+`Instance.CreateWindow(isPrivate: true)` → `MainWindow.IsPrivate` → `TabManager.IsPrivate` → tabs call
+`EnsureCoreWebView2Async(env, options)` with `IsInPrivateModeEnabled`. All private tabs share one
+off-the-record session that is discarded when the last one closes. In a private window: no history, a
+session-only `DownloadManager(null)`, no "remember" check box (remembered decisions from normal windows still
+apply), extensions are not loaded, the top bar shows an incognito icon, and `BackupManagement` skips the
+window. Links opened from other apps go to a normal window.
+
+## Settings
+
+`BrowserSettings` properties with `[SettingInfo]` become editors via reflection (`GetSettingControls`): bool,
+int (with `MinValue`/`MaxValue`), decimal, string (folder/file picker when `PickerEnabled`), enum (every
+member becomes an option), Color, and `ThemedUserControl` fields for custom sections (shown with their title
+and description by `CustomControlSettingControl`). Categories render in `SettingsCategory` order.
+`MainWindow.OnSettingsChanged` calls `WebviewTab.ApplySettings()` on every tab for any change, so engine
+settings apply live.
+
+## Extensions
+
+`ExtensionsController` (Settings > Extensions) drives `ExtensionManager`: on/off is stored as folder names in
+`BrowserSettings.DisabledExtensions` and re-applied whenever a WebView loads extensions; updates re-download
+the CRX from the store named by the manifest's `update_url` and reinstall only if the version is newer;
+"Load unpacked" copies a folder into the instance's Extensions folder. `SetupExtensionSupport` runs per tab and
+is serialized per instance so concurrent tabs do not add the same folder twice.

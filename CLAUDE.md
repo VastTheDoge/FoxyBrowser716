@@ -20,14 +20,15 @@ the solution.)
 | Area | Key paths |
 |---|---|
 | App entry | `App.xaml(.cs)`, `GlobalUsingStatements.cs`, `app.manifest`, `Package.appxmanifest` |
-| App spine / services | `DataManagement/` — `AppServer` (static app lifecycle + single-instance server), `Instance` (a browser profile/window), `TabManager`, `DownloadManager`, `ExtensionManager` (Chrome-extension manifest parsing + loading), `BackupManagement`, `FoxyFileManager`, `FoxyLogger` |
-| Domain models | `DataObjects/Basic/` — POCOs (`Theme`, `GlobalSettings`, `InstanceSettings`, `TabGroup`, `Download`, `Extension`, `WebsiteInfo`, `VersionInfo`, `BackupModel`, `InstanceCache`…) |
-| Tabs & AI | `DataObjects/Complex/` — `WebviewTab`, `AiChat`, `AiHandler`, `FoxyAutoSaver`; `DataObjects/WebviewTab/` — `WebviewTab` partials (`WTMain`, `WTExtensionManagement`, `WTExtensionManifest`, `WTPerformance`) |
+| App spine / services | `DataManagement/` — `AppServer` (static app lifecycle + single-instance server), `Instance` (a browser profile/window), `TabManager`, `DownloadManager`, `HistoryManager`, `SitePermissionManager`, `ExtensionManager` (Chrome-extension manifest parsing + loading, enable/update/unpacked), `BackupManagement`, `FoxyFileManager`, `FoxyLogger` |
+| Domain models | `DataObjects/Basic/` — POCOs (`Theme`, `GlobalSettings`, `InstanceSettings`, `TabGroup`, `Download`, `HistoryEntry`, `SitePermission`, `Extension`, `WebsiteInfo`, `VersionInfo`, `BackupModel`, `InstanceCache`…) |
+| Tabs & AI | `DataObjects/Complex/` — `WebviewTab`, `AiChat`, `AiHandler`, `FoxyAutoSaver`, `FoxyAutoSaverLockedList`; `DataObjects/WebviewTab/` — `WebviewTab` partials (`WTMain`, `WTExtensionManagement`, `WTExtensionManifest`, `WTPerformance`) |
 | Settings framework | `DataObjects/Settings/` — `ISetting`, `Setting`, `BrowserSettings`, `SettingClasses`, `SettingsUiHelper`, `ThemedUserControl` |
-| Browser window UI | `Controls/MainWindow/` — `MainWindow`, `TopBar`, `LeftBar`/`NewLeftBar`, `TabCard`, `TabGroupCard`, `NewTabCard`, `NewTabGroupCard`, `BookmarkCard`, `InstanceCard`, `AiChatWindow` |
+| Browser window UI | `Controls/MainWindow/` — `MainWindow` (+ `MainWindow.WebUi.cs`: hosts the themed web UI), `TopBar`, `LeftBar`/`NewLeftBar`, `TabCard`, `TabGroupCard`, `NewTabCard`, `NewTabGroupCard`, `BookmarkCard`, `InstanceCard`, `AiChatWindow` |
+| Themed web UI | `Controls/WebUi/` — code-built replacements for WebView2's UI: `WebPromptHost`/`WebPromptCard` (permission, alert/confirm/prompt, sign-in), `DownloadsPanel`, `HistoryPanel`, `ToastHost`, `WebUiStyle`. See `Docs/architecture/web-ui.md` |
 | Home page + widgets | `Controls/HomePage/` — `HomePage`, `Widget`, `WidgetEditOverlay`, `Widgets/` (`DateTime`, `SpeedTest`, `Title`, `Example`) |
-| Settings UI | `Controls/SettingsPage/` (+ `SettingsCustomControls/ExtensionController`) |
-| Reusable controls | `Controls/Generic/` — `F`-prefixed primitives (`FIconButton`, `FTextButton`, `FTextInput`, `FRGBInput`, `FContextMenu`, `FoxyPopup`, `FTODO`, `TransparentWindow`) |
+| Settings UI | `Controls/SettingsPage/` (+ `SettingsCustomControls/`: `ExtensionController`, `SitePermissionsController`, `BrowsingDataController`) |
+| Reusable controls | `Controls/Generic/` — `F`-prefixed primitives (`FIconButton`, `FTextButton`, `FTextInput`, `FRGBInput`, `FContextMenu`, `FCheckBox`, `FProgressBar`, `FoxyPopup`, `FTODO`, `TransparentWindow`) |
 | Converters / helpers | `Controls/Helpers/` — value converters, `Animator`, `VisualCaptureHelper` |
 | Static data | `StaticData/` — `DefaultThemes`, `InfoGetter` |
 | Styles / assets | `Themes/Generic.xaml` (default control resources), `Assets/` (icons + MSIX tiles) |
@@ -39,6 +40,8 @@ the solution.)
 - **Platforms:** `x86;x64;ARM64` — **no AnyCPU**, so every build/run must name a platform.
 - **Check a change:** `Scripts/CheckBuild.ps1 [-Project <csproj> -Platform x64]` — quiet build that
   prints only errors/warnings (defaults to the app csproj at Platform x64).
+- **Check a change on Linux (no Windows):** `Scripts/LinuxCompileCheck/check.sh` — type-checks all C# via
+  generated XAML stubs; does not validate XAML. See its README and `memory/linux-compile-check.md`.
 - **Run:** launch from Rider/VS with the *Unpackaged* (`commandName: Project`) or *(Package)*
   (`MsixPackage`) profile in `Properties/launchSettings.json` — those set up the Windows App SDK
   bootstrapper. Release builds are R2R + `TieredPGO`, published per-RID (`win-x64`/`win-x86`/`win-arm64`).

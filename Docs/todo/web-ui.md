@@ -10,12 +10,15 @@ Architecture: `Docs/architecture/web-ui.md`.
       `RasterizationScale`; if it is off by the scale factor, drop the division in `OnTabContextMenuRequested`).
 - [ ] Submenus (e.g. the engine's "Share"/spell-check entries) open and "Back" returns.
 - [ ] Popups (context menu, prompts, toasts, downloads, history) draw over the WebView2 content.
-- [ ] Permission prompt: allow/block with and without "Remember", then check Settings > Site Permissions.
+- [ ] Permission prompt: allow/block, then the "Remember this?" follow-up (both buttons), then check
+      Settings > Site Permissions. Also the Always/Never modes of "Remember permission choices".
 - [ ] `alert`/`confirm`/`prompt`/`beforeunload` (e.g. `javascript:alert(1)` from the console) and a background
       tab's alert waiting until you switch to it.
 - [ ] HTTP basic auth prompt (e.g. https://httpbin.org/basic-auth/user/pass).
 - [ ] Downloads: pause/resume/cancel, "ask where to save", "show in folder", list survives restart.
 - [ ] Private window: InPrivate session works, nothing in History, not restored after restart.
+- [ ] Instance "Private browsing" setting: new windows of that instance open private; restart with only
+      private windows open still opens a window.
 - [ ] Extensions: on/off survives restart; Update on a Chrome Web Store and an Edge Add-ons extension;
       Load unpacked (also with a manifest that has comments).
 - [ ] Dragging a tab between a private and a normal window is refused (same as between instances).

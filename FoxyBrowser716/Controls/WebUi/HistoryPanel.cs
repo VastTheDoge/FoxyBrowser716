@@ -28,14 +28,26 @@ public sealed partial class HistoryPanel : ThemedUserControl
 	private int _shownCount = PageSize;
 
 	/// <param name="openUrl">Opens a history entry (the window opens it in a new tab).</param>
-	public HistoryPanel(HistoryManager history, Action<string> openUrl)
+	/// <param name="clearEngineHistory">Also clears WebView2's own history (visited-link colors) on "Clear history".</param>
+	public HistoryPanel(HistoryManager history, Action<string> openUrl, Func<Task>? clearEngineHistory = null)
 	{
 		_history = history;
 		_openUrl = openUrl;
 
 		_title = WebUiStyle.Text("History", 16, bold: true, wrap: false);
 		_clearButton = WebUiStyle.TextButton("Clear history", () => { }, MaterialIconKind.DeleteSweep);
-		WebUiStyle.MakeConfirming(_clearButton, "Click again to clear all", () => _history.Clear());
+		WebUiStyle.MakeConfirming(_clearButton, "Click again to clear all", async () =>
+		{
+			_history.Clear();
+			try
+			{
+				if (clearEngineHistory is not null) await clearEngineHistory();
+			}
+			catch (Exception e)
+			{
+				ErrorHandeler.FoxyLogger.AddError(e);
+			}
+		});
 
 		var header = new Grid
 		{

@@ -281,30 +281,59 @@ public sealed partial class MainWindow
 			deferral.Complete();
 		}
 
-		void Decide(PermissionDecision chosen, WebPromptResult result)
+		var host = SitePermissionManager.GetDisplayHost(origin);
+		var summary = SitePermissionManager.GetDisplayName(kind);
+		var requestText = SitePermissionManager.GetRequestText(kind);
+		var request = char.ToLowerInvariant(requestText[0]) + requestText[1..]; // "know your location"
+
+		void Remember(PermissionDecision chosen, bool confirm)
 		{
-			if (result.IsChecked && !IsPrivate)
-			{
-				Instance.SitePermissions.SetDecision(origin, kind, chosen);
-				ShowToast($"Saved for {SitePermissionManager.GetDisplayHost(origin)}",
-					$"{SitePermissionManager.GetDisplayName(kind)}: {(chosen == PermissionDecision.Allow ? "allowed" : "blocked")}. Change it in Settings > Site Permissions.",
+			Instance.SitePermissions.SetDecision(origin, kind, chosen);
+			if (confirm)
+				ShowToast($"Saved for {host}",
+					$"{summary}: {(chosen == PermissionDecision.Allow ? "allowed" : "blocked")}. Change it in Settings > Site Permissions.",
 					SitePermissionManager.GetIcon(kind));
-			}
+		}
+
+		void Decide(PermissionDecision chosen)
+		{
+			// answer the page first; remembering is a separate, optional step
 			Complete(chosen == PermissionDecision.Allow ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny);
+
+			if (IsPrivate) return; // private windows use remembered choices but never add to them
+
+			switch (Instance.Settings.RememberPermissionChoices)
+			{
+				case PermissionRememberMode.Always:
+					Remember(chosen, confirm: true);
+					break;
+				case PermissionRememberMode.Ask:
+					_prompts!.EnqueueNext(tab.Id, new WebPromptSpec
+					{
+						Title = $"Remember this for {host}?",
+						Message = (chosen == PermissionDecision.Allow ? $"You allowed {host} to {request}." : $"You did not let {host} {request}.")
+						          + " A remembered choice applies every time and can be changed in Settings > Site Permissions.",
+						Icon = SitePermissionManager.GetIcon(kind),
+						Buttons =
+						[
+							new WebPromptButton("Just this time", false, _ => { }),
+							new WebPromptButton("Remember", true, _ => Remember(chosen, confirm: false)),
+						],
+						Cancelled = () => { },
+					});
+					break;
+			}
 		}
 
 		_prompts.Enqueue(tab.Id, new WebPromptSpec
 		{
-			Title = $"{SitePermissionManager.GetDisplayHost(origin)} wants to",
+			Title = $"{host} wants to",
 			Message = SitePermissionManager.GetRequestText(kind),
 			Icon = SitePermissionManager.GetIcon(kind),
-			// private windows never remember decisions
-			CheckboxText = IsPrivate ? null : "Remember this decision",
-			CheckboxDefault = Instance.Settings.RememberPermissionDecisions,
 			Buttons =
 			[
-				new WebPromptButton("Block", false, r => Decide(PermissionDecision.Block, r), IsDanger: true),
-				new WebPromptButton("Allow", true, r => Decide(PermissionDecision.Allow, r)),
+				new WebPromptButton("Block", false, _ => Decide(PermissionDecision.Block), IsDanger: true),
+				new WebPromptButton("Allow", true, _ => Decide(PermissionDecision.Allow)),
 			],
 			Cancelled = () => Complete(CoreWebView2PermissionState.Deny),
 		});
@@ -512,10 +541,16 @@ public sealed partial class MainWindow
 		if (_historyPopup is null)
 		{
 			_historyPanel = new HistoryPanel(Instance.History, url =>
-			{
-				TabManager.SwapActiveTabTo(TabManager.AddTab(url));
-				_historyPopup!.IsOpen = false;
-			}) { CurrentTheme = CurrentTheme };
+				{
+					TabManager.SwapActiveTabTo(TabManager.AddTab(url));
+					_historyPopup!.IsOpen = false;
+				},
+				// the engine keeps its own (unreadable) history for visited-link colors; clear it with ours
+				async () =>
+				{
+					if (ExtensionPopupWebview.CoreWebView2?.Profile is { } profile)
+						await profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.BrowsingHistory);
+				}) { CurrentTheme = CurrentTheme };
 			_historyPopup = new Popup
 			{
 				Child = _historyPanel,

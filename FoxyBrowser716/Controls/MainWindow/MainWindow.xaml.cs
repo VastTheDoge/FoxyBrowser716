@@ -439,8 +439,10 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
             new(new MaterialIcon {Kind = MaterialIconKind.History}, 1, "History", HistoryClick),
             new(new MaterialIcon {Kind = MaterialIconKind.Download}, 1, "Downloads", DownloadClick),
             new(new MaterialIcon {Kind = MaterialIconKind.Puzzle}, 1, "Extensions", ExtensionsClick, false),
-            new(new MaterialIcon {Kind = MaterialIconKind.Incognito}, 1, "New private window", () => _ = Instance.CreateWindow(isPrivate: true)),
         ];
+        // an instance set to private browsing opens nothing but private windows already
+        if (!Instance.Settings.PrivateBrowsing)
+            items.Add(new(new MaterialIcon {Kind = MaterialIconKind.Incognito}, 1, "New private window", () => _ = Instance.CreateWindow(isPrivate: true)));
         
         ContextMenuPopup.Margin = new Thickness(32, 28, 0, 0);
         switch (TabManager.ActiveTabId)
@@ -549,7 +551,13 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
             })
             .ToList();
 
-        if (items.Count == 0)
+        // InPrivate tabs cannot run the profile's extensions, so listing them here would be misleading
+        if (IsPrivate)
+        {
+            items.Clear();
+            items.Add(new FContextMenu.MenuItem(new MaterialIcon { Kind = MaterialIconKind.Incognito }, 1, "Extensions are off in private windows", null) { IsEnabled = false });
+        }
+        else if (items.Count == 0)
             items.Add(new FContextMenu.MenuItem(new MaterialIcon { Kind = MaterialIconKind.Store }, 1, "Get extensions",
                 () => TabManager.SwapActiveTabTo(TabManager.AddTab(ExtensionManager.ChromeWebStoreUrl))));
 

@@ -10,6 +10,15 @@ public enum PermissionDefault
 	Block,
 }
 
+/// <summary>What happens after you allow or block a permission prompt.</summary>
+public enum PermissionRememberMode
+{
+	/// <summary>Follow up with "Remember this?".</summary>
+	Ask,
+	Always,
+	Never,
+}
+
 public enum PermissionDecision
 {
 	Allow,

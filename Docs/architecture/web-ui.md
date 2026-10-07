@@ -39,13 +39,19 @@ Resolution for a `PermissionRequested`:
 
 1. a remembered decision for the request's origin (`scheme://host[:port]`) and kind;
 2. else the kind's default from settings (`LocationPermission`, `CameraPermission`, … : Ask/Allow/Block);
-3. else prompt (themed, with "Remember this decision", default from `RememberPermissionDecisions`).
+3. else prompt (themed: Allow / Block).
+
+Allow/Block answers the page immediately. Remembering is a separate step, controlled by
+`RememberPermissionChoices`: **Ask** (default) queues a "Remember this for {site}?" follow-up prompt
+(`WebPromptHost.EnqueueNext`, so it shows before the tab's other prompts) with "Just this time" / "Remember";
+**Always** saves straight away and shows a toast; **Never** saves nothing. Private windows read remembered
+choices but never add to them. Per-kind defaults follow Chrome's: motion sensors and autoplay are allowed,
+everything else asks.
 
 `SavesInProfile` is always set to `false` when FoxyBrowser decides, so our list is the source of truth and the
 engine keeps asking. Decisions the engine stored itself (older builds, or its own prompt while themed dialogs
 are off) are applied by the engine *before* `PermissionRequested` fires; the settings section lists them from
 `Profile.GetNonDefaultPermissionSettingsAsync()` with a Reset button (`SetPermissionStateAsync(..., Default)`).
-Remembering shows a toast pointing at Settings > Site Permissions.
 
 ## Downloads (`DownloadManager`, Downloads.json)
 
@@ -57,6 +63,10 @@ Web Store page are left to `ExtensionManager`. The profile's `DefaultDownloadFol
 `DownloadFolder` setting (empty = the Downloads known folder).
 
 ## History (`HistoryManager`, History.json)
+
+WebView2 does keep Chromium's history inside the profile (it colors visited links), but exposes no API to
+read or search it — only `ClearBrowsingDataAsync(BrowsingHistory)`. So FoxyBrowser records its own, and
+"Clear history" clears both.
 
 One entry per URL (title, favicon, first/last visit, visit count). Recorded from `NavigationCompleted`
 (success) and from same-document `SourceChanged` (single-page apps); title/favicon arrive later and update the
@@ -72,12 +82,16 @@ run on its timer thread) and logs a failed save instead of letting it escape the
 
 ## Private windows
 
-`Instance.CreateWindow(isPrivate: true)` → `MainWindow.IsPrivate` → `TabManager.IsPrivate` → tabs call
+A window is private when opened with "New private window" (or "Open link in private window"), or when its
+instance has `BrowserSettings.PrivateBrowsing` on — then every window of that instance is private (applies
+to windows opened after the change; a WebView2 cannot switch modes). `Instance.CreateWindow(isPrivate)` →
+`MainWindow.IsPrivate` → `TabManager.IsPrivate` → tabs call
 `EnsureCoreWebView2Async(env, options)` with `IsInPrivateModeEnabled`. All private tabs share one
-off-the-record session that is discarded when the last one closes. In a private window: no history, a
-session-only `DownloadManager(null)`, no "remember" check box (remembered decisions from normal windows still
-apply), extensions are not loaded, the top bar shows an incognito icon, and `BackupManagement` skips the
-window. Links opened from other apps go to a normal window. Tabs cannot be dragged between private and normal
+off-the-record session per instance (each instance has its own WebView2 user data folder) that is discarded
+when the last one closes. In a private window: no history, a session-only `DownloadManager(null)`, permission
+choices are read but never remembered, extensions are not loaded (the Extensions menu says so), the top bar shows an incognito icon, and `BackupManagement` skips the
+window (and a backup holding only private windows counts as nothing to restore, so startup still opens a
+window). Links opened from other apps go to a normal window when the instance has one. Tabs cannot be dragged between private and normal
 windows (`TabManager.CanAcceptTabsFrom`, the same check that keeps tabs inside their instance).
 
 ## Settings

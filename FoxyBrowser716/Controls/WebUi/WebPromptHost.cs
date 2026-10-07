@@ -59,6 +59,15 @@ public sealed class WebPromptHost
 		Refresh();
 	}
 
+	/// <summary>Queues a prompt ahead of the tab's others (a follow-up to the prompt just answered).</summary>
+	public void EnqueueNext(int tabId, WebPromptSpec spec)
+	{
+		if (!_queues.TryGetValue(tabId, out var queue))
+			_queues[tabId] = queue = [];
+		queue.Insert(0, spec);
+		Refresh();
+	}
+
 	/// <summary>Cancels every prompt of a tab that is closing.</summary>
 	public void CancelTab(int tabId)
 	{

@@ -22,7 +22,8 @@ public sealed partial class BrowsingDataController : ThemedUserControl
 		Add(panel, "Clear history", MaterialIconKind.History, async () =>
 		{
 			_mainWindow.Instance.History.Clear();
-			await Task.CompletedTask;
+			// the engine's own history only colors visited links, but should not outlive ours
+			await ClearEngineData(CoreWebView2BrowsingDataKinds.BrowsingHistory);
 		});
 		Add(panel, "Clear downloads list", MaterialIconKind.Download, async () =>
 		{

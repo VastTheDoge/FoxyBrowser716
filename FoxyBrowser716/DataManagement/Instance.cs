@@ -140,7 +140,8 @@ public partial class Instance : ObservableObject
 	{
 		try
 		{
-			var newWindow = await MainWindow.Create(this, isPrivate);
+			// an instance set to private browsing only ever opens private windows
+			var newWindow = await MainWindow.Create(this, isPrivate || Settings.PrivateBrowsing);
 
 			Focused?.Invoke(this);
 

@@ -206,6 +206,10 @@ public sealed partial class BrowserSettings : ObservableObject
     #endregion
 
     #region Privacy
+    [SettingInfo(Category = SettingsCategory.Privacy, Name = "Private browsing",
+        Description = "Open every window of this instance InPrivate: cookies, site data and cache are thrown away when its windows close, no history is saved, downloads are only listed for the session and extensions are not loaded. Applies to windows opened after changing it.")]
+    public bool PrivateBrowsing { get; set => SetProperty(ref field, value); } = false;
+
     [SettingInfo(Category = SettingsCategory.Privacy, Name = "Tracking prevention",
         Description = "Blocks trackers across sites. Strict blocks the most but can break some logins and embedded content.")]
     public CoreWebView2TrackingPreventionLevel TrackingPrevention { get; set => SetProperty(ref field, value); } = CoreWebView2TrackingPreventionLevel.Balanced;
@@ -228,9 +232,9 @@ public sealed partial class BrowserSettings : ObservableObject
     #endregion
 
     #region Permissions
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "Remember decisions by default",
-        Description = "Whether \"Remember this decision\" starts checked when a site asks for a permission.")]
-    public bool RememberPermissionDecisions { get; set => SetProperty(ref field, value); } = true;
+    [SettingInfo(Category = SettingsCategory.Permissions, Name = "Remember permission choices",
+        Description = "After you allow or block a site's request: Ask follows up with \"Remember this?\", Always saves it straight away, Never applies it to that one request only.")]
+    public PermissionRememberMode RememberPermissionChoices { get; set => SetProperty(ref field, value); } = PermissionRememberMode.Ask;
 
     [SettingInfo(Category = SettingsCategory.Permissions, Name = "Location", Description = "When a site wants to know your location.")]
     public PermissionDefault LocationPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
@@ -248,7 +252,7 @@ public sealed partial class BrowserSettings : ObservableObject
     public PermissionDefault ClipboardReadPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
 
     [SettingInfo(Category = SettingsCategory.Permissions, Name = "Motion sensors", Description = "When a site wants to use motion and light sensors.")]
-    public PermissionDefault SensorsPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
+    public PermissionDefault SensorsPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Allow;
 
     [SettingInfo(Category = SettingsCategory.Permissions, Name = "Automatic downloads", Description = "When a site tries to download several files at once.")]
     public PermissionDefault AutomaticDownloadsPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;

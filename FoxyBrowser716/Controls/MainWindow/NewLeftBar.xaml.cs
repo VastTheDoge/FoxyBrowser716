@@ -234,13 +234,25 @@ public sealed partial class NewLeftBar : UserControl
             }
             else
             {
-                TabManager.Instance.Pins.Add(tab!.Info);
+                TabManager.Instance.Pins.Add(SnapshotOf(tab!.Info));
                 
                 if (PinCard.Icon.Child is MaterialIcon mi) 
                     mi.Kind = MaterialIconKind.Pin;
             }
         }
     }
+
+    /// <summary>
+    /// A copy of the tab's page info. Storing the tab's own <see cref="WebsiteInfo"/> would make the pin/bookmark
+    /// follow the tab as it navigates elsewhere.
+    /// </summary>
+    private static WebsiteInfo SnapshotOf(WebsiteInfo info) => new()
+    {
+        Url = info.Url,
+        Title = info.Title,
+        FavIconUrl = info.FavIconUrl,
+        DateAdded = DateTime.Now,
+    };
 
     private void BookmarkCard_OnOnClick(int obj)
     {
@@ -255,7 +267,7 @@ public sealed partial class NewLeftBar : UserControl
             }
             else
             {
-                TabManager.Instance.Bookmarks.Add(tab!.Info);
+                TabManager.Instance.Bookmarks.Add(SnapshotOf(tab!.Info));
                 
                 if (BookmarkCard.Icon.Child is MaterialIcon mi) 
                     mi.Kind = MaterialIconKind.Bookmark;

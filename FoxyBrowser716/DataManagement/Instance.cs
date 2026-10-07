@@ -23,6 +23,10 @@ public partial class Instance : ObservableObject
 	public ObservableCollection<WebsiteInfo> Pins => _pins.Items;
 	public ObservableCollection<WebsiteInfo> Bookmarks => _bookmarks.Items;
 
+	public HistoryManager History { get; private set; } = null!;
+	public SitePermissionManager SitePermissions { get; private set; } = null!;
+	public DownloadManager Downloads { get; private set; } = null!;
+
 	private FoxyAutoSaverField<ObservableCollection<string>> PinnedExtensionsList;
 
 	[ObservableProperty]
@@ -107,14 +111,24 @@ public partial class Instance : ObservableObject
 		
 		_pins = new("Pins.json", FoxyFileManager.FolderType.Data, Name);
 		_bookmarks = new("Bookmarks.json", FoxyFileManager.FolderType.Data, Name);
+
+		History = new HistoryManager(Name);
+		SitePermissions = new SitePermissionManager(Name);
+		Downloads = new DownloadManager(Name);
 			
 		await AppServer.AutoSaver.AddItems([
 			_settings,
 			_cache,
 			_pins,
 			_bookmarks,
-			PinnedExtensionsList
+			PinnedExtensionsList,
+			History.SaverItem,
+			SitePermissions.SaverItem,
+			Downloads.SaverItem!,
 		]);
+
+		History.Initialize(Settings.HistoryRetentionDays);
+		Downloads.Initialize();
 
 		pinnedExtensions = new Lazy<ObservableCollection<Extension>>(GetAndVerifyPinnedExtensions);
 		
@@ -122,11 +136,11 @@ public partial class Instance : ObservableObject
 		if (DefaultThemeObject.Themes.TryGetValue(Settings.ThemeName, out var theme)) CurrentTheme = theme;
 	}
 	
-	public async Task<MainWindow> CreateWindow(string[]? urls = null, Rect? startLocation = null, MainWindow.BrowserWindowState windowState = MainWindow.BrowserWindowState.Normal)
+	public async Task<MainWindow> CreateWindow(string[]? urls = null, Rect? startLocation = null, MainWindow.BrowserWindowState windowState = MainWindow.BrowserWindowState.Normal, bool isPrivate = false)
 	{
 		try
 		{
-			var newWindow = await MainWindow.Create(this);
+			var newWindow = await MainWindow.Create(this, isPrivate);
 
 			Focused?.Invoke(this);
 

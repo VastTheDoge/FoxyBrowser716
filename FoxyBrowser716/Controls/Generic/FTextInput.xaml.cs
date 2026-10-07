@@ -101,6 +101,15 @@ public sealed partial class FTextInput : UserControl
     
     public event Action<string>? OnTextChanged;
     public event Action? EnterPressed;
+
+    /// <summary>What is in the box right now (<see cref="Text"/> is not updated while typing).</summary>
+    public string CurrentText => SearchBox.Text;
+
+    public void FocusInput()
+    {
+        SearchBox.Focus(FocusState.Programmatic);
+        SearchBox.SelectAll();
+    }
     
     public FTextInput()
     {

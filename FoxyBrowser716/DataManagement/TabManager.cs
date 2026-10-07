@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using FoxyBrowser716.Controls.MainWindow;
 using FoxyBrowser716.DataObjects.Complex;
 using FoxyBrowser716.ErrorHandeler;
 using Microsoft.Web.WebView2.Core;
@@ -11,6 +12,12 @@ namespace FoxyBrowser716.DataManagement;
 public partial class TabManager : ObservableObject
 {
 	[ObservableProperty] public partial Instance Instance { get; private set; }
+
+	/// <summary>The window these tabs live in; it hosts their themed web UI (menus, prompts, downloads).</summary>
+	public MainWindow Window { get; private set; } = null!;
+
+	/// <summary>Tabs use an InPrivate WebView2 session: nothing is written to history, downloads or permissions.</summary>
+	public bool IsPrivate { get; private set; }
 
 	[ObservableProperty] public partial ObservableCollection<WebviewTab> Tabs { get; set; } = [];
 	[ObservableProperty] public partial ObservableCollection<TabGroup> Groups { get; set; } = [];
@@ -28,16 +35,18 @@ public partial class TabManager : ObservableObject
 	private TabManager()
 	{ }
 
-	public static async Task<TabManager> Create(Instance instance)
+	public static async Task<TabManager> Create(Instance instance, MainWindow window, bool isPrivate)
 	{
 		var newManager = new TabManager();
-		await newManager.Initialize(instance);
+		await newManager.Initialize(instance, window, isPrivate);
 		return newManager;
 	}
 
-	private async Task Initialize(Instance instance)
+	private async Task Initialize(Instance instance, MainWindow window, bool isPrivate)
 	{
 		Instance = instance;
+		Window = window;
+		IsPrivate = isPrivate;
 		
 		var options = new CoreWebView2EnvironmentOptions
 		{
@@ -340,14 +349,14 @@ public partial class TabManager : ObservableObject
 	
 	public async Task CreateWindowWithGroup(TabGroup group, Rect bounds)
 	{
-		var window = await Instance.CreateWindow([], bounds);
+		var window = await Instance.CreateWindow([], bounds, isPrivate: IsPrivate);
 		window.TabManager.MoveGroupFromWindow(group, this);
 		window.Show();
 	}
 
 	public async Task CreateWindowWithTab(WebviewTab tab, Rect bounds)
 	{
-		var window = await Instance.CreateWindow([], bounds);
+		var window = await Instance.CreateWindow([], bounds, isPrivate: IsPrivate);
 		window.TabManager.MoveTabFromWindow(tab, this, 0);
 		window.Show();
 	}

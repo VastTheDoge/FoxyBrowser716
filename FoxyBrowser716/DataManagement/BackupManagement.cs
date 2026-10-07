@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using CommunityToolkit.WinUI;
 using FoxyBrowser716.ErrorHandeler;
 
@@ -92,6 +92,7 @@ public static class BackupManagement
 					windows.AddRange(
 						from instance in AppServer.Instances 
 						from window in instance.Windows 
+						where !window.IsPrivate // private sessions must not come back after a restart
 						select new WindowBackupModel
 						{
 							InstanceName = instance.Name,

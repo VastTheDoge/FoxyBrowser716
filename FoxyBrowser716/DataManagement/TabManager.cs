@@ -86,6 +86,13 @@ public partial class TabManager : ObservableObject
 		WebsiteEnvironment ??= await CoreWebView2Environment.CreateWithOptionsAsync(null, FoxyFileManager.BuildFolderPath(FoxyFileManager.FolderType.WebView2, Instance.Name), options);
 	}
 	
+	/// <summary>
+	/// Whether tabs dragged from <paramref name="source"/> may drop into <paramref name="target"/>: same instance, and
+	/// never between a private and a normal window (the tab would be re-opened in the other profile).
+	/// </summary>
+	public static bool CanAcceptTabsFrom(TabManager? target, TabManager source) =>
+		target is not null && target.Instance.Name == source.Instance.Name && target.IsPrivate == source.IsPrivate;
+
 	public bool TryGetTab(int tabId, out WebviewTab? tab)
 	{
 		if (_tabs.GetValueOrDefault(tabId) is { } t)

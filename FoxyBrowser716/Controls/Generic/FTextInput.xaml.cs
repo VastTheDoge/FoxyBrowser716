@@ -105,6 +105,16 @@ public sealed partial class FTextInput : UserControl
     /// <summary>What is in the box right now (<see cref="Text"/> is not updated while typing).</summary>
     public string CurrentText => SearchBox.Text;
 
+    /// <summary>
+    /// Replaces what is in the box. Use this rather than <see cref="Text"/> after the user may have typed:
+    /// typing does not update <see cref="Text"/>, so assigning the same stale value would do nothing.
+    /// </summary>
+    public void SetText(string text)
+    {
+        SetValue(TextProperty, text);
+        SearchBox.Text = text;
+    }
+
     public void FocusInput()
     {
         SearchBox.Focus(FocusState.Programmatic);

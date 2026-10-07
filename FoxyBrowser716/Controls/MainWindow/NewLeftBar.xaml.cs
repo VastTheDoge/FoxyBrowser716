@@ -470,7 +470,7 @@ public sealed partial class NewLeftBar : UserControl
     {
         if (e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
         {
-            if (TabManager?.Instance.Name != sourceManager.Instance.Name)
+            if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager))
             {
                 e.AcceptedOperation = DataPackageOperation.None;
                 e.Handled = true;
@@ -507,7 +507,7 @@ public sealed partial class NewLeftBar : UserControl
         if (!e.DataView.Properties.TryGetValue("SourceManager", out var smObj) || smObj is not TabManager sourceManager) return;
         if (!e.DataView.Properties.TryGetValue("DragItem", out var item)) return;
 
-        if (TabManager?.Instance.Name != sourceManager.Instance.Name) return;
+        if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager)) return;
 
         MoveTipsVisible = Visibility.Collapsed;
 
@@ -570,7 +570,7 @@ public sealed partial class NewLeftBar : UserControl
         
         if (e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
         {
-            if (TabManager?.Instance.Name != sourceManager.Instance.Name)
+            if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager))
             {
                 e.AcceptedOperation = DataPackageOperation.None;
                 return;
@@ -590,7 +590,7 @@ public sealed partial class NewLeftBar : UserControl
         {
             if (e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
             {
-                if (TabManager?.Instance.Name != sourceManager.Instance.Name)
+                if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager))
                 {
                     e.AcceptedOperation = DataPackageOperation.None;
                     e.Handled = true;
@@ -616,7 +616,7 @@ public sealed partial class NewLeftBar : UserControl
         if (!e.DataView.Properties.TryGetValue("DragType", out object dragType)) return;
         if (!e.DataView.Properties.TryGetValue("SourceManager", out var smObj) || smObj is not TabManager sourceManager) return;
         
-        if (TabManager?.Instance.Name != sourceManager.Instance.Name) return;
+        if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager)) return;
 
         MoveTipsVisible = Visibility.Collapsed;
 
@@ -667,7 +667,7 @@ public sealed partial class NewLeftBar : UserControl
             e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && 
             smObj is TabManager sourceManager)
         {
-            if (TabManager?.Instance.Name != sourceManager.Instance.Name)
+            if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager))
             {
                 e.AcceptedOperation = DataPackageOperation.None;
                 return;
@@ -700,7 +700,7 @@ public sealed partial class NewLeftBar : UserControl
         
         if (e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
         {
-            if (TabManager?.Instance.Name != sourceManager.Instance.Name) return;
+            if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager)) return;
         }
 
         if (e.DataView.Properties.ContainsKey("DragItem"))
@@ -719,7 +719,7 @@ public sealed partial class NewLeftBar : UserControl
             e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && 
             smObj is TabManager sourceManager)
         {
-            if (TabManager?.Instance.Name != sourceManager.Instance.Name) return;
+            if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager)) return;
 
             var isSameWindow = sourceManager == TabManager;
 
@@ -753,7 +753,7 @@ public sealed partial class NewLeftBar : UserControl
     {
         if (e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
         {
-            if (TabManager?.Instance.Name != sourceManager.Instance.Name) return;
+            if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager)) return;
         }
 
         OpenSideBar();

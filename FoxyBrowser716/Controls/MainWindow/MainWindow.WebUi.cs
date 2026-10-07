@@ -425,6 +425,7 @@ public sealed partial class MainWindow
 
 		args.Handled = true; // hides the engine flyout; the download itself continues
 		var deferral = args.GetDeferral();
+		var tracked = false;
 		try
 		{
 			if (Instance.Settings.AskWhereToSaveDownloads)
@@ -450,16 +451,29 @@ public sealed partial class MainWindow
 			}
 
 			Downloads.Track(args.DownloadOperation, args.ResultFilePath);
+			tracked = true;
 			if (Instance.Settings.ShowDownloadsOnStart)
 				ShowDownloadsPanel();
 		}
 		catch (Exception e)
 		{
 			FoxyLogger.AddError(e);
+			// the engine flyout is already hidden: still list the download (at its default path) so it is visible
+			if (!tracked && !args.Cancel)
+			{
+				try
+				{
+					Downloads.Track(args.DownloadOperation, args.ResultFilePath);
+					ShowDownloadsPanel();
+				}
+				catch (Exception trackError) { FoxyLogger.AddError(trackError); }
+			}
 		}
 		finally
 		{
-			deferral.Complete();
+			// the tab may have closed while the save dialog was open; this is an async void handler
+			try { deferral.Complete(); }
+			catch (Exception e) { FoxyLogger.AddWarning("Completing the download request failed", e.Message); }
 		}
 	}
 

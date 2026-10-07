@@ -67,7 +67,8 @@ visit count and recency).
 
 `FoxyAutoSaverLockedList<T>` backs history, downloads and permissions: the UI thread mutates under a lock and
 the auto-saver serializes a snapshot, unlike `FoxyAutoSaverList<T>` which enumerates the live collection from
-the timer thread.
+the timer thread. `FoxyAutoSaver` itself locks its queue bookkeeping (requests come from the UI thread, saves
+run on its timer thread) and logs a failed save instead of letting it escape the timer callback.
 
 ## Private windows
 
@@ -76,7 +77,8 @@ the timer thread.
 off-the-record session that is discarded when the last one closes. In a private window: no history, a
 session-only `DownloadManager(null)`, no "remember" check box (remembered decisions from normal windows still
 apply), extensions are not loaded, the top bar shows an incognito icon, and `BackupManagement` skips the
-window. Links opened from other apps go to a normal window.
+window. Links opened from other apps go to a normal window. Tabs cannot be dragged between private and normal
+windows (`TabManager.CanAcceptTabsFrom`, the same check that keeps tabs inside their instance).
 
 ## Settings
 
@@ -92,5 +94,8 @@ settings apply live.
 `ExtensionsController` (Settings > Extensions) drives `ExtensionManager`: on/off is stored as folder names in
 `BrowserSettings.DisabledExtensions` and re-applied whenever a WebView loads extensions; updates re-download
 the CRX from the store named by the manifest's `update_url` and reinstall only if the version is newer;
-"Load unpacked" copies a folder into the instance's Extensions folder. `SetupExtensionSupport` runs per tab and
-is serialized per instance so concurrent tabs do not add the same folder twice.
+"Load unpacked" copies a folder into the instance's Extensions folder. Installs and updates are staged: the CRX
+is unpacked and validated in the instance Cache folder, the old copy is moved aside, and it is put back if the
+new one fails to load. Every operation that changes the set (`SetupExtensionSupport` per tab, install, update,
+remove, on/off) runs under one per-instance lock and re-reads the list inside it, because
+`SetupExtensionSupport` replaces it. Folders with an unreadable manifest are skipped (logged), never fatal.

@@ -123,7 +123,7 @@ public sealed partial class HistoryPanel : ThemedUserControl
 	/// <summary>Pre-fills the search box (used by "Search history for ..." in the address bar suggestions).</summary>
 	public void SetQuery(string query)
 	{
-		_search.Text = query;
+		_search.SetText(query);
 		_shownCount = PageSize;
 		if (IsLoaded) Rebuild();
 	}

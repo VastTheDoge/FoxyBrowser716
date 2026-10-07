@@ -314,63 +314,91 @@ public class FoxyAutoSaver : IDisposable
 	}
 
 	private int tick;
+
+	/// <summary>
+	/// Guards the queue bookkeeping (<see cref="_queuedItems"/>, <see cref="_runningTick"/>, the queues):
+	/// save requests arrive on the UI thread while this timer runs on a thread-pool thread.
+	/// </summary>
+	private readonly object _queueLock = new();
+
 	private async void HandleQueueTimerElapsed(object? sender, ElapsedEventArgs e)
 	{
-		if (_runningTick)
-			return;
-		
-		_runningTick = true;
-		List<Task> tasks =
-		[
-			SaveQueue(_highQueue, SavePriority.High)
-		];
-		
-		if (tick % 5 == 0)  // run every 5 ticks
-			tasks.Add(SaveQueue(_normalQueue, SavePriority.Normal));
-		
-		if (tick % 25 == 0) // run every 25 ticks
+		lock (_queueLock)
 		{
-			tasks.Add(SaveQueue(_lowQueue, SavePriority.Low));
-			tick = 0; // reset so that keeping the browser open forever does not cause a crash (due to integer limit).
+			if (_runningTick)
+				return;
+			_runningTick = true;
 		}
 
-		tick += 1;
-		
-		await Task.WhenAll(tasks);
-
-		while (_waitQueue.TryDequeue(out var pair))
+		List<Task> tasks = [];
+		try
 		{
-			switch (pair.priority)
+			tasks.Add(SaveQueue(_highQueue, SavePriority.High));
+			
+			if (tick % 5 == 0)  // run every 5 ticks
+				tasks.Add(SaveQueue(_normalQueue, SavePriority.Normal));
+			
+			if (tick % 25 == 0) // run every 25 ticks
 			{
-				case SavePriority.Low:
-					_lowQueue.Enqueue(pair.item);
-					break;
-				case SavePriority.Normal:
-					_normalQueue.Enqueue(pair.item);
-					break;
-				case SavePriority.High:
-					_highQueue.Enqueue(pair.item);
-					break;
-				
-				// Should never happen, but just in case to prevent item not saving and memory leaks.
-				case SavePriority.Immediate:
-					tasks.Add(pair.item.Save());
-					_queuedItems.Remove(pair.item);
-					break;
+				tasks.Add(SaveQueue(_lowQueue, SavePriority.Low));
+				tick = 0; // reset so that keeping the browser open forever does not cause a crash (due to integer limit).
 			}
-		}
 
-		_runningTick = false;
+			tick += 1;
+			
+			await Task.WhenAll(tasks);
+		}
+		catch (Exception ex)
+		{
+			// this is an async void timer callback: an escaping exception would end the process
+			ErrorHandeler.FoxyLogger.AddError(ex);
+		}
+		finally
+		{
+			List<IFoxyAutoSaverItem> immediate = [];
+			lock (_queueLock)
+			{
+				// requests that came in while saving were parked; queue them now (and record them, or
+				// SaveQueue would skip them)
+				while (_waitQueue.TryDequeue(out var pair))
+				{
+					if (pair.priority == SavePriority.Immediate)
+						immediate.Add(pair.item);
+					else
+						EnqueueLocked(pair.item, pair.priority);
+				}
+
+				_runningTick = false;
+			}
+
+			foreach (var item in immediate)
+				_ = SaveSafely(item);
+		}
 	}
 	
 	private void AddToQueue(IFoxyAutoSaverItem item, SavePriority priority)
 	{
-		if (_runningTick)
+		lock (_queueLock)
 		{
-			_waitQueue.Enqueue((item, priority));
-			return;
+			if (_runningTick)
+			{
+				_waitQueue.Enqueue((item, priority));
+				return;
+			}
+
+			if (priority != SavePriority.Immediate)
+			{
+				EnqueueLocked(item, priority);
+				return;
+			}
 		}
 
+		_ = SaveSafely(item);
+	}
+
+	/// <summary>Caller holds <see cref="_queueLock"/>.</summary>
+	private void EnqueueLocked(IFoxyAutoSaverItem item, SavePriority priority)
+	{
 		if (_queuedItems.TryGetValue(item, out var oldPriority) && oldPriority >= priority)
 			return;
 		
@@ -385,9 +413,6 @@ public class FoxyAutoSaver : IDisposable
 			case SavePriority.High:
 				_highQueue.Enqueue(item);
 				break;
-			case SavePriority.Immediate:
-				item.Save();
-				return;
 		}
 
 		_queuedItems[item] = priority;
@@ -395,16 +420,32 @@ public class FoxyAutoSaver : IDisposable
 	
 	private async Task SaveQueue(ConcurrentQueue<IFoxyAutoSaverItem> queue, SavePriority queuePriority)
 	{
-		List<Task> tasks = [];
-		while (queue.TryDequeue(out var item))
+		List<IFoxyAutoSaverItem> toSave = [];
+		lock (_queueLock)
 		{
-			if (_queuedItems.TryGetValue(item, out var priority) && priority == queuePriority)
+			while (queue.TryDequeue(out var item))
 			{
-				tasks.Add(item.Save());
-				_queuedItems.Remove(item);
+				if (_queuedItems.TryGetValue(item, out var priority) && priority == queuePriority)
+				{
+					toSave.Add(item);
+					_queuedItems.Remove(item);
+				}
 			}
 		}
-		await Task.WhenAll(tasks);
+		await Task.WhenAll(toSave.Select(SaveSafely));
+	}
+
+	/// <summary>Saves one item; a failure (e.g. a locked file) is logged and only affects that item.</summary>
+	private static async Task SaveSafely(IFoxyAutoSaverItem item)
+	{
+		try
+		{
+			await item.Save();
+		}
+		catch (Exception ex)
+		{
+			ErrorHandeler.FoxyLogger.AddError(ex);
+		}
 	}
 
 	public void Dispose()

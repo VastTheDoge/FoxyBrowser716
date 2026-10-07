@@ -142,7 +142,7 @@ public sealed partial class SettingsPage : UserControl
 
         if (!string.IsNullOrWhiteSpace(InputSearch.CurrentText))
         {
-            InputSearch.Text = string.Empty;
+            InputSearch.SetText(string.Empty);
             ApplySearch(string.Empty);
         }
 

@@ -50,7 +50,7 @@ public static class SettingsHelper
 			case SliderSetting sliderSetting:
 				return new SliderSettingControl(sliderSetting);
 			case CustomControlSetting customControlSetting:
-				return customControlSetting.ControlFactory(window);
+				return new CustomControlSettingControl(customControlSetting, customControlSetting.ControlFactory(window));
 			default:
 				throw new ArgumentOutOfRangeException();
 		}
@@ -133,6 +133,28 @@ public abstract class BaseSettingControl : ThemedUserControl
 	{
 		TitleBlock.Foreground = new SolidColorBrush(CurrentTheme.PrimaryForegroundColor);
 		DescriptionBlock.Foreground = new SolidColorBrush(CurrentTheme.SecondaryForegroundColor);
+	}
+}
+
+/// <summary>
+/// Title and description for a custom settings section (extensions, site permissions...), with the
+/// section's own control underneath at full width.
+/// </summary>
+public class CustomControlSettingControl : BaseSettingControl
+{
+	public ThemedUserControl Inner { get; }
+
+	public CustomControlSettingControl(CustomControlSetting setting, ThemedUserControl inner) : base(setting.Name, setting.Description, DefaultThemes.DarkMode)
+	{
+		Inner = inner;
+		inner.HorizontalAlignment = HorizontalAlignment.Stretch;
+		AddControlBelow(inner);
+	}
+
+	protected override void ApplyTheme()
+	{
+		base.ApplyTheme();
+		if (Inner is not null) Inner.CurrentTheme = CurrentTheme;
 	}
 }
 
@@ -411,10 +433,13 @@ public class ComboSettingControl : BaseSettingControl
 
 	private void InitializeComboControl()
 	{
+		// a few short options (Ask/Allow/Block, Auto/Light/Dark) read better side by side, like the On/Off pair
+		var horizontal = setting.Options.Length <= 4 && setting.Options.All(o => o.name.Length <= 12);
+
 		optionsPanel = new StackPanel
 		{
-			Orientation = Orientation.Vertical,
-			Spacing = 6
+			Orientation = horizontal ? Orientation.Horizontal : Orientation.Vertical,
+			Spacing = horizontal ? 2 : 6
 		};
 
 		foreach (var (name, id) in setting.Options)
@@ -423,7 +448,9 @@ public class ComboSettingControl : BaseSettingControl
 			{
 				ButtonText = name,
 				HorizontalAlignment = HorizontalAlignment.Stretch,
-				MinWidth = 180
+				MinWidth = horizontal ? 0 : 180,
+				CornerRadius = new CornerRadius(5),
+				Margin = new Thickness(2),
 			};
 			btn.OnClick += (_, _) =>
 			{

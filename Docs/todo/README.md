@@ -4,4 +4,5 @@ One checklist file per workstream (e.g. `extension-loader.md`, `theming.md`). Ti
 land; delete a file when its workstream is done. Keep these action-oriented — decisions that are
 settled belong in the relevant `Docs/architecture/*.md`, not here.
 
-Empty for now.
+- `web-ui.md` — verify the themed web UI / permissions / history / downloads / private windows on Windows; follow-ups.
+- `rust-poc.md` — Rust rewrite spike.

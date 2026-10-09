@@ -234,13 +234,25 @@ public sealed partial class NewLeftBar : UserControl
             }
             else
             {
-                TabManager.Instance.Pins.Add(tab!.Info);
+                TabManager.Instance.Pins.Add(SnapshotOf(tab!.Info));
                 
                 if (PinCard.Icon.Child is MaterialIcon mi) 
                     mi.Kind = MaterialIconKind.Pin;
             }
         }
     }
+
+    /// <summary>
+    /// A copy of the tab's page info. Storing the tab's own <see cref="WebsiteInfo"/> would make the pin/bookmark
+    /// follow the tab as it navigates elsewhere.
+    /// </summary>
+    private static WebsiteInfo SnapshotOf(WebsiteInfo info) => new()
+    {
+        Url = info.Url,
+        Title = info.Title,
+        FavIconUrl = info.FavIconUrl,
+        DateAdded = DateTime.Now,
+    };
 
     private void BookmarkCard_OnOnClick(int obj)
     {
@@ -255,7 +267,7 @@ public sealed partial class NewLeftBar : UserControl
             }
             else
             {
-                TabManager.Instance.Bookmarks.Add(tab!.Info);
+                TabManager.Instance.Bookmarks.Add(SnapshotOf(tab!.Info));
                 
                 if (BookmarkCard.Icon.Child is MaterialIcon mi) 
                     mi.Kind = MaterialIconKind.Bookmark;
@@ -458,7 +470,7 @@ public sealed partial class NewLeftBar : UserControl
     {
         if (e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
         {
-            if (TabManager?.Instance.Name != sourceManager.Instance.Name)
+            if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager))
             {
                 e.AcceptedOperation = DataPackageOperation.None;
                 e.Handled = true;
@@ -495,7 +507,7 @@ public sealed partial class NewLeftBar : UserControl
         if (!e.DataView.Properties.TryGetValue("SourceManager", out var smObj) || smObj is not TabManager sourceManager) return;
         if (!e.DataView.Properties.TryGetValue("DragItem", out var item)) return;
 
-        if (TabManager?.Instance.Name != sourceManager.Instance.Name) return;
+        if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager)) return;
 
         MoveTipsVisible = Visibility.Collapsed;
 
@@ -558,7 +570,7 @@ public sealed partial class NewLeftBar : UserControl
         
         if (e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
         {
-            if (TabManager?.Instance.Name != sourceManager.Instance.Name)
+            if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager))
             {
                 e.AcceptedOperation = DataPackageOperation.None;
                 return;
@@ -578,7 +590,7 @@ public sealed partial class NewLeftBar : UserControl
         {
             if (e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
             {
-                if (TabManager?.Instance.Name != sourceManager.Instance.Name)
+                if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager))
                 {
                     e.AcceptedOperation = DataPackageOperation.None;
                     e.Handled = true;
@@ -604,7 +616,7 @@ public sealed partial class NewLeftBar : UserControl
         if (!e.DataView.Properties.TryGetValue("DragType", out object dragType)) return;
         if (!e.DataView.Properties.TryGetValue("SourceManager", out var smObj) || smObj is not TabManager sourceManager) return;
         
-        if (TabManager?.Instance.Name != sourceManager.Instance.Name) return;
+        if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager)) return;
 
         MoveTipsVisible = Visibility.Collapsed;
 
@@ -655,7 +667,7 @@ public sealed partial class NewLeftBar : UserControl
             e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && 
             smObj is TabManager sourceManager)
         {
-            if (TabManager?.Instance.Name != sourceManager.Instance.Name)
+            if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager))
             {
                 e.AcceptedOperation = DataPackageOperation.None;
                 return;
@@ -688,7 +700,7 @@ public sealed partial class NewLeftBar : UserControl
         
         if (e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
         {
-            if (TabManager?.Instance.Name != sourceManager.Instance.Name) return;
+            if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager)) return;
         }
 
         if (e.DataView.Properties.ContainsKey("DragItem"))
@@ -707,7 +719,7 @@ public sealed partial class NewLeftBar : UserControl
             e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && 
             smObj is TabManager sourceManager)
         {
-            if (TabManager?.Instance.Name != sourceManager.Instance.Name) return;
+            if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager)) return;
 
             var isSameWindow = sourceManager == TabManager;
 
@@ -741,7 +753,7 @@ public sealed partial class NewLeftBar : UserControl
     {
         if (e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
         {
-            if (TabManager?.Instance.Name != sourceManager.Instance.Name) return;
+            if (!TabManager.CanAcceptTabsFrom(TabManager, sourceManager)) return;
         }
 
         OpenSideBar();

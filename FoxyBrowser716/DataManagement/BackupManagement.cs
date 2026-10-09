@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using CommunityToolkit.WinUI;
 using FoxyBrowser716.ErrorHandeler;
 
@@ -12,9 +12,9 @@ public static class BackupManagement
 	{
 		var response = FoxyFileManager.ReadFromFile<AppBackupModel>(BackupPath);
 		
-		if (response.code != FoxyFileManager.ReturnCode.Success) return false;
-		
-		return true;
+		// a backup taken while only private windows were open has nothing to restore; treating it as a
+		// restore would leave the app running with no window at all
+		return response is { code: FoxyFileManager.ReturnCode.Success, content.Windows.Length: > 0 };
 	}
 
 	public static void ClearBackup()
@@ -92,6 +92,7 @@ public static class BackupManagement
 					windows.AddRange(
 						from instance in AppServer.Instances 
 						from window in instance.Windows 
+						where !window.IsPrivate // private sessions must not come back after a restart
 						select new WindowBackupModel
 						{
 							InstanceName = instance.Name,

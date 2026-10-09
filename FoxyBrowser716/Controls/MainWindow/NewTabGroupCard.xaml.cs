@@ -130,7 +130,7 @@ public sealed partial class NewTabGroupCard : UserControl
         if (e.DataView.Properties.TryGetValue("DragType", out var type) && type.ToString() == "Tab" &&
             e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
         {
-            if (TabGroup.TabManager.Instance.Name != sourceManager.Instance.Name)
+            if (!TabManager.CanAcceptTabsFrom(TabGroup.TabManager, sourceManager))
             {
                 e.AcceptedOperation = DataPackageOperation.None;
                 return;
@@ -156,7 +156,7 @@ public sealed partial class NewTabGroupCard : UserControl
         if (e.DataView.Properties.TryGetValue("DragItem", out var tabObj) && tabObj is WebviewTab tab &&
             e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
         {
-            if (TabGroup.TabManager.Instance.Name != sourceManager.Instance.Name) return;
+            if (!TabManager.CanAcceptTabsFrom(TabGroup.TabManager, sourceManager)) return;
 
             if (sourceManager == TabGroup.TabManager)
             {
@@ -175,7 +175,7 @@ public sealed partial class NewTabGroupCard : UserControl
         if (e.DataView.Properties.TryGetValue("DragType", out var type) && type.ToString() == "Tab" &&
             e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
         {
-            if (TabGroup.TabManager.Instance.Name != sourceManager.Instance.Name) return;
+            if (!TabManager.CanAcceptTabsFrom(TabGroup.TabManager, sourceManager)) return;
             Root.Opacity = 0.7;
             e.Handled = true;
         }
@@ -232,7 +232,7 @@ public sealed partial class NewTabGroupCard : UserControl
     {
         if (e.DataView.Properties.TryGetValue("SourceManager", out var smObj) && smObj is TabManager sourceManager)
         {
-            if (TabGroup.TabManager.Instance.Name != sourceManager.Instance.Name)
+            if (!TabManager.CanAcceptTabsFrom(TabGroup.TabManager, sourceManager))
             {
                 e.AcceptedOperation = DataPackageOperation.None;
                 return;
@@ -261,7 +261,7 @@ public sealed partial class NewTabGroupCard : UserControl
             e.DataView.Properties.TryGetValue("SourceManager", out var smObj) &&
             smObj is TabManager sourceManager)
         {
-            if (TabGroup.TabManager.Instance.Name != sourceManager.Instance.Name) return;
+            if (!TabManager.CanAcceptTabsFrom(TabGroup.TabManager, sourceManager)) return;
 
             var isSameWindow = sourceManager == TabGroup.TabManager;
             var sourceGroupId = e.DataView.Properties.TryGetValue("SourceGroupId", out var idObj) ? (int)idObj : -1;

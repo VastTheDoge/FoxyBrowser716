@@ -80,6 +80,14 @@ public sealed partial class TopBar : UserControl
         SearchBackground.BorderBrush = new SolidColorBrush(CurrentTheme.SecondaryAccentColorSlightTransparent);
         SearchBox.SelectionHighlightColor = new SolidColorBrush(CurrentTheme.SecondaryHighlightColorVeryTransparent);
         SearchBox.Foreground = new SolidColorBrush(CurrentTheme.PrimaryForegroundColor);
+        PrivateIcon.Foreground = new SolidColorBrush(CurrentTheme.PrimaryHighlightColor);
+    }
+
+    /// <summary>Marks the bar as belonging to a private (InPrivate) window.</summary>
+    public void SetPrivateMode(bool isPrivate)
+    {
+        PrivateIcon.Visibility = isPrivate ? Visibility.Visible : Visibility.Collapsed;
+        SearchBox.PlaceholderText = isPrivate ? "Search privately or enter a URL" : "Search or enter a URL";
     }
     
     public TopBar()

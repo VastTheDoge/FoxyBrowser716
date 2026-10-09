@@ -6,9 +6,12 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Web;
 using FoxyBrowser716.DataObjects.Basic;
 using FoxyBrowser716.DataObjects.Complex;
+using FoxyBrowser716.ErrorHandeler;
+using Material.Icons.WinUI3;
 using Microsoft.Web.WebView2.Core;
 using WinUIEx;
 
@@ -688,7 +691,8 @@ public static class ExtensionManifestParser
 
     public static ExtensionManifestBase Parse(string json, string? extensionFolderPath = null)
     {
-        using var doc = JsonDocument.Parse(json);
+        // Chrome accepts comments and trailing commas in manifest.json
+        using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
         var root = doc.RootElement;
 
         int manifestVersion = 2;
@@ -735,6 +739,9 @@ public static class ExtensionManifestParser
 public static class ExtensionManager
 {
     public static event Action<string>? ExtensionsModified;
+
+    public const string ChromeWebStoreUrl = "https://chromewebstore.google.com/";
+    public const string EdgeAddonsUrl = "https://microsoftedge.microsoft.com/addons/";
     
 	readonly static string[] _whitelist = ["Microsoft Clipboard Extension", "Microsoft Edge PDF Viewer"];
 	
@@ -742,6 +749,36 @@ public static class ExtensionManager
 	/// Instance name to extension list
 	/// </summary>
 	private static ConcurrentDictionary<string, List<Extension>> _extensions = [];
+
+	/// <summary>
+	/// Every tab calls <see cref="SetupExtensionSupport"/>; restoring a session creates many tabs at once, and
+	/// without this they would all try to add the same extension folders to the profile concurrently.
+	/// </summary>
+	private static readonly ConcurrentDictionary<string, SemaphoreSlim> _loadLocks = [];
+
+	/// <summary>
+	/// Runs <paramref name="work"/> while holding the instance's extension lock, which every operation that
+	/// loads, adds, removes or replaces extensions takes. Always re-read <c>_extensions[instance.Name]</c> inside:
+	/// <see cref="SetupExtensionSupport"/> replaces that list.
+	/// </summary>
+	private static async Task<T> WithExtensionLock<T>(Instance instance, Func<Task<T>> work)
+	{
+		var gate = _loadLocks.GetOrAdd(instance.Name, _ => new SemaphoreSlim(1, 1));
+		await gate.WaitAsync();
+		try { return await work(); }
+		finally { gate.Release(); }
+	}
+
+	private static Task WithExtensionLock(Instance instance, Func<Task> work) =>
+		WithExtensionLock(instance, async () => { await work(); return true; });
+
+	private static List<Extension> ExtensionList(Instance instance) => _extensions.GetOrAdd(instance.Name, _ => []);
+
+	/// <summary>Folder name of an extension, which is its store id for store installs. Used as its stable key.</summary>
+	public static string GetFolderKey(Extension extension) => Path.GetFileName(extension.FolderPath.TrimEnd('\\', '/'));
+
+	private static bool IsDisabled(Instance instance, Extension extension) =>
+		instance.Settings.DisabledExtensions.Contains(GetFolderKey(extension));
 	
 	/// <summary>
 	/// 
@@ -772,59 +809,73 @@ public static class ExtensionManager
                 }
             } catch(Exception ex){
                 Debug.WriteLine("Failed parse web message: " + ex.Message + " raw:" + raw);
+                FoxyLogger.AddError(ex);
+                Notify(instance, webview, "Extension install failed", ex.Message, isError: true);
             }
         };
         
         await webview.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(MicrosoftStoreScript);
 
-        var currentExtensions = await webview.CoreWebView2.Profile.GetBrowserExtensionsAsync();
-        currentExtensions = currentExtensions.Where(e => !_whitelist.Contains(e.Name)).ToList();
-
-        var extensionFolder = FoxyFileManager.BuildFolderPath(FoxyFileManager.FolderType.Extension, instance.Name);
-
-        List<Extension> extensionsList = [];
-        if (currentExtensions.Any())
+        var loadLock = _loadLocks.GetOrAdd(instance.Name, _ => new SemaphoreSlim(1, 1));
+        await loadLock.WaitAsync();
+        try
         {
+            var currentExtensions = (await webview.CoreWebView2.Profile.GetBrowserExtensionsAsync())
+                .Where(e => !_whitelist.Contains(e.Name))
+                .ToList();
+
+            var extensionFolder = FoxyFileManager.BuildFolderPath(FoxyFileManager.FolderType.Extension, instance.Name);
+
+            // match folders to what the profile already has loaded; anything missing (first run, or a
+            // folder added since) is added to the profile in parallel
+            // match by the id seen earlier this session when there is one; names can be localized differently
+            var known = _extensions.TryGetValue(instance.Name, out var previous) ? previous.ToList() : [];
+            List<(Extension folder, CoreWebView2BrowserExtension? loaded)> found = [];
             await foreach (var ex in GetFolderExtensions(extensionFolder))
             {
-                var webviewEx = currentExtensions.FirstOrDefault(e => IsNamesEqual(e.Name, ex.Manifest));
+                var knownId = known.FirstOrDefault(k => string.Equals(k.FolderPath, ex.FolderPath, StringComparison.OrdinalIgnoreCase))?.Id;
+                found.Add((ex, currentExtensions.FirstOrDefault(e => e.Id == knownId)
+                               ?? currentExtensions.FirstOrDefault(e => IsNamesEqual(e.Name, ex.Manifest))));
+            }
 
-                if (webviewEx is null) continue;
+            var added = await Task.WhenAll(found.Select(async pair =>
+            {
+                if (pair.loaded is not null) return pair;
+                try
+                {
+                    return (pair.folder, await webview.CoreWebView2.Profile.AddBrowserExtensionAsync(pair.folder.FolderPath));
+                }
+                catch (Exception e)
+                {
+                    FoxyLogger.AddError(e);
+                    return pair;
+                }
+            }));
 
-                // Ensure it's enabled
-                await webviewEx.EnableAsync(true);
+            List<Extension> extensionsList = [];
+            foreach (var (folder, loaded) in added)
+            {
+                if (loaded is null) continue;
+
+                var enabled = !IsDisabled(instance, folder);
+                if (loaded.IsEnabled != enabled)
+                    await loaded.EnableAsync(enabled);
 
                 extensionsList.Add(new Extension
                 {
-                    FolderPath = ex.FolderPath,
-                    Manifest = ex.Manifest,
-                    WebviewName = webviewEx.Name,
-                    Id = webviewEx.Id
+                    FolderPath = folder.FolderPath,
+                    Manifest = folder.Manifest,
+                    WebviewName = loaded.Name,
+                    Id = loaded.Id,
+                    IsEnabled = enabled,
                 });
             }
+            _extensions[instance.Name] = extensionsList;
         }
-        else
+        finally
         {
-            List<(Task<CoreWebView2BrowserExtension>, Extension)> tasks = [];
-            await foreach (var ex in GetFolderExtensions(extensionFolder))
-            {
-                tasks.Add((
-                    webview.CoreWebView2.Profile
-                        .AddBrowserExtensionAsync(ex.FolderPath)
-                        .AsTask(),
-                    ex));
-            }
-            await Task.WhenAll(tasks.Select(p => p.Item1));
-            tasks.ForEach(p =>
-                extensionsList.Add(new Extension
-                {
-                    FolderPath = p.Item2.FolderPath,
-                    Manifest = p.Item2.Manifest,
-                    WebviewName = p.Item1.Result.Name,
-                    Id = p.Item1.Result.Id
-                }));
+            loadLock.Release();
         }
-        _extensions[instance.Name] = extensionsList;
         ExtensionsModified?.Invoke(instance.Name);
 		
 		// setup capturing of extension downloads:
@@ -834,13 +885,25 @@ public static class ExtensionManager
 				if (webview.CoreWebView2.Source.Contains("chromewebstore.google.com"))
 				{
 					e.Handled = true;
-					await instance.AddExtension(webview, e);
+					try
+					{
+						await instance.AddExtension(webview, e);
+					}
+					catch (Exception ex)
+					{
+						// this is an async void handler: an escaping exception would take the browser down
+						FoxyLogger.AddError(ex);
+						Notify(instance, webview, "Extension install failed", ex.Message, isError: true);
+					}
 				}
 				
 			};
 	}
 
-    public static async Task RemoveExtension(this Instance instance, WebView2 webview, string id)
+    public static Task RemoveExtension(this Instance instance, WebView2 webview, string id) =>
+        WithExtensionLock(instance, () => RemoveExtensionLocked(instance, webview, id));
+
+    private static async Task RemoveExtensionLocked(Instance instance, WebView2 webview, string id)
     {
         if (_extensions.TryGetValue(instance.Name, out var extensions))
         {
@@ -848,12 +911,257 @@ public static class ExtensionManager
                 .FirstOrDefault(e => e.Id == id);
             var localEx = extensions.FirstOrDefault(e => e.Id == id);
             
-            if (webviewEx is null || localEx is null) return;
+            if (localEx is null) return;
 
-            webviewEx.RemoveAsync();
+            if (webviewEx is not null)
+                await webviewEx.RemoveAsync();
             extensions.Remove(localEx);
             FoxyFileManager.DeleteFolder(localEx.FolderPath);
+
+            var key = GetFolderKey(localEx);
+            if (instance.Settings.DisabledExtensions.Contains(key))
+                instance.Settings.DisabledExtensions = instance.Settings.DisabledExtensions.Where(k => k != key).ToList();
+
             ExtensionsModified?.Invoke(instance.Name);
+        }
+    }
+
+    /// <summary>Turns an extension on or off in the profile and remembers the choice across restarts.</summary>
+    public static Task SetExtensionEnabled(this Instance instance, WebView2 webview, Extension extension, bool enabled) =>
+        WithExtensionLock(instance, () => SetExtensionEnabledLocked(instance, webview, extension, enabled));
+
+    private static async Task SetExtensionEnabledLocked(Instance instance, WebView2 webview, Extension extension, bool enabled)
+    {
+        var key = GetFolderKey(extension);
+        var disabled = instance.Settings.DisabledExtensions.Where(k => k != key).ToList();
+        if (!enabled) disabled.Add(key);
+        // a new list (not an in-place edit) so the property setter fires and the settings get saved
+        instance.Settings.DisabledExtensions = disabled;
+
+        var webviewEx = (await webview.CoreWebView2.Profile.GetBrowserExtensionsAsync())
+            .FirstOrDefault(e => e.Id == extension.Id);
+        if (webviewEx is not null && webviewEx.IsEnabled != enabled)
+            await webviewEx.EnableAsync(enabled);
+
+        extension.IsEnabled = enabled;
+        foreach (var current in ExtensionList(instance).Where(e => e.Id == extension.Id))
+            current.IsEnabled = enabled;
+        ExtensionsModified?.Invoke(instance.Name);
+    }
+
+    public enum UpdateResult
+    {
+        Updated,
+        UpToDate,
+        /// <summary>Installed unpacked (or from an unknown store), so there is nowhere to update from.</summary>
+        NotFromStore,
+    }
+
+    /// <summary>Which store an extension came from, from its manifest's update_url.</summary>
+    public static ExtensionSource? GetStoreSource(Extension extension) => extension.Manifest.UpdateUrl switch
+    {
+        { } url when url.Contains("edge.microsoft.com", StringComparison.OrdinalIgnoreCase) => ExtensionSource.Microsoft,
+        { } url when url.Contains("google.com", StringComparison.OrdinalIgnoreCase) => ExtensionSource.Chrome,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Downloads the current version from the extension's store and reinstalls it if it is newer.
+    /// Throws if the download or install fails.
+    /// </summary>
+    public static async Task<(UpdateResult result, string? version)> UpdateExtension(this Instance instance, WebView2 webview, Extension extension)
+    {
+        if (GetStoreSource(extension) is not { } source)
+            return (UpdateResult.NotFromStore, extension.Manifest.Version);
+
+        var id = GetFolderKey(extension);
+        var crxBytes = await DownloadCrx(id, source);
+
+        // unpack to a scratch folder first so an up-to-date extension is never touched
+        var scratch = Path.Combine(FoxyFileManager.BuildFolderPath(FoxyFileManager.FolderType.Cache, instance.Name), "ExtensionUpdate-" + Guid.NewGuid().ToString("N"));
+        string? newVersion;
+        try
+        {
+            ExtractCrx(crxBytes, scratch);
+            newVersion = (await GetFolderExtension(scratch))?.Manifest.Version;
+        }
+        finally
+        {
+            FoxyFileManager.DeleteFolder(scratch);
+        }
+
+        if (CompareVersions(newVersion, extension.Manifest.Version) <= 0)
+            return (UpdateResult.UpToDate, extension.Manifest.Version);
+
+        await ProcessCrxFile(instance, webview, id, crxBytes, isUpdate: true);
+        return (UpdateResult.Updated, newVersion);
+    }
+
+    /// <summary>
+    /// Copies an unpacked extension folder (one with a manifest.json, e.g. one you are developing) into this
+    /// instance's extensions and loads it. Re-run it after changing the source folder.
+    /// </summary>
+    public static Task<Extension> InstallUnpacked(this Instance instance, WebView2 webview, string sourceFolder) =>
+        WithExtensionLock(instance, () => InstallUnpackedLocked(instance, webview, sourceFolder));
+
+    private static async Task<Extension> InstallUnpackedLocked(Instance instance, WebView2 webview, string sourceFolder)
+    {
+        if (!File.Exists(Path.Combine(sourceFolder, "manifest.json")))
+            throw new Exception("That folder has no manifest.json, so it is not an unpacked extension.");
+
+        var invalid = Path.GetInvalidFileNameChars();
+        var name = new string(Path.GetFileName(sourceFolder.TrimEnd('\\', '/')).Where(c => !invalid.Contains(c)).ToArray());
+        var target = Path.Combine(FoxyFileManager.BuildFolderPath(FoxyFileManager.FolderType.Extension, instance.Name), $"unpacked-{name}");
+
+        // replacing a previous copy: unload it first
+        if (ExtensionList(instance).FirstOrDefault(e => string.Equals(e.FolderPath, target, StringComparison.OrdinalIgnoreCase)) is { } previous)
+            await RemoveExtensionLocked(instance, webview, previous.Id);
+        FoxyFileManager.DeleteFolder(target);
+
+        try
+        {
+            CopyDirectory(sourceFolder, target);
+
+            var extension = await GetFolderExtension(target)
+                            ?? throw new Exception("The extension's manifest.json could not be read.");
+
+            var browserExtension = await webview.CoreWebView2.Profile.AddBrowserExtensionAsync(target);
+            var installed = new Extension
+            {
+                FolderPath = extension.FolderPath,
+                Manifest = extension.Manifest,
+                WebviewName = browserExtension.Name,
+                Id = browserExtension.Id,
+                IsEnabled = true,
+            };
+            ExtensionList(instance).Add(installed);
+            ExtensionsModified?.Invoke(instance.Name);
+            return installed;
+        }
+        catch
+        {
+            // never leave a half-installed folder behind: every tab would try to load it
+            FoxyFileManager.DeleteFolder(target);
+            throw;
+        }
+    }
+
+    private static void CopyDirectory(string source, string target)
+    {
+        Directory.CreateDirectory(target);
+        foreach (var file in Directory.GetFiles(source))
+            File.Copy(file, Path.Combine(target, Path.GetFileName(file)), true);
+        foreach (var directory in Directory.GetDirectories(source))
+        {
+            // version control and dependency folders are not part of a loadable extension
+            var dirName = Path.GetFileName(directory);
+            if (dirName is ".git" or "node_modules") continue;
+            CopyDirectory(directory, Path.Combine(target, dirName));
+        }
+    }
+
+    /// <summary>Compares dotted extension versions ("1.10.2" &gt; "1.9"). Unparsable parts count as 0.</summary>
+    public static int CompareVersions(string? a, string? b)
+    {
+        var left = (a ?? "0").Split('.').Select(p => int.TryParse(p, out var n) ? n : 0).ToArray();
+        var right = (b ?? "0").Split('.').Select(p => int.TryParse(p, out var n) ? n : 0).ToArray();
+        for (var i = 0; i < Math.Max(left.Length, right.Length); i++)
+        {
+            var l = i < left.Length ? left[i] : 0;
+            var r = i < right.Length ? right[i] : 0;
+            if (l != r) return l.CompareTo(r);
+        }
+        return 0;
+    }
+
+    /// <summary>Localized name, falling back to what WebView2 reports.</summary>
+    public static string GetDisplayName(Extension extension) =>
+        extension.Manifest.GetLocalizedName() is { Length: > 0 } name && !name.StartsWith("__MSG_")
+            ? name
+            : extension.WebviewName ?? extension.Manifest.Name ?? GetFolderKey(extension);
+
+    public static string? GetDescription(Extension extension) =>
+        extension.Manifest.GetLocalizedDescription() is { Length: > 0 } description && !description.StartsWith("__MSG_")
+            ? description
+            : null;
+
+    /// <summary>The page the toolbar button opens, relative to the extension root, if it has one.</summary>
+    public static string? GetPopupPage(ExtensionManifestBase manifest) => manifest switch
+    {
+        ExtensionManifestV3 v3 => v3.Action?.DefaultPopup,
+        ExtensionManifestV2 v2 => v2.BrowserAction?.DefaultPopup ?? v2.PageAction?.DefaultPopup,
+        _ => null,
+    } is { Length: > 0 } page ? page.TrimStart('/') : null;
+
+    /// <summary>chrome-extension:// URL of the extension's options page, if it has one.</summary>
+    public static string? GetOptionsUrl(Extension extension)
+    {
+        var page = extension.Manifest switch
+        {
+            ExtensionManifestV3 v3 => v3.OptionsUI?.Page ?? v3.OptionsPage,
+            ExtensionManifestV2 v2 => v2.OptionsUI?.Page ?? v2.GetExtraValue<string>("options_page"),
+            _ => null,
+        };
+        return string.IsNullOrWhiteSpace(page) ? null : $"chrome-extension://{extension.Id}/{page.TrimStart('/')}";
+    }
+
+    /// <summary>Full path of the extension's largest icon, if it declares one that exists.</summary>
+    public static string? GetIconPath(Extension extension)
+    {
+        Icons? icons = extension.Manifest switch
+        {
+            ExtensionManifestV3 v3 => v3.Icons is { Count: > 0 } ? v3.Icons : v3.Action?.DefaultIcon,
+            ExtensionManifestV2 v2 => v2.Icons is { Count: > 0 } ? v2.Icons : v2.BrowserAction?.DefaultIcon ?? v2.PageAction?.DefaultIcon,
+            _ => null,
+        };
+
+        var relative = icons?
+            .OrderByDescending(kv => int.TryParse(kv.Key, out var size) ? size : 0)
+            .Select(kv => kv.Value)
+            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+        if (relative is null) return null;
+
+        var path = Path.Combine(extension.FolderPath, relative.TrimStart('/', '\\'));
+        return File.Exists(path) ? path : null;
+    }
+
+    /// <summary>The extension's icon as an element, or a puzzle piece if it has none.</summary>
+    public static UIElement CreateIconElement(Extension extension, double size)
+    {
+        if (GetIconPath(extension) is { } path)
+        {
+            try
+            {
+                return new Image
+                {
+                    Source = path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)
+                        ? new SvgImageSource(new Uri(path))
+                        : new BitmapImage(new Uri(path)),
+                    Width = size,
+                    Height = size,
+                    Stretch = Stretch.Uniform,
+                };
+            }
+            catch (Exception e)
+            {
+                FoxyLogger.AddError(e);
+            }
+        }
+        return new MaterialIcon { Kind = MaterialIconKind.Puzzle, Width = size, Height = size };
+    }
+
+    /// <summary>Shows a toast in the window that owns <paramref name="webview"/> (or the instance's current window).</summary>
+    private static void Notify(Instance instance, WebView2? webview, string title, string? message, bool isError = false)
+    {
+        try
+        {
+            var window = instance.Windows.FirstOrDefault(w => webview is not null && w.Content?.XamlRoot == webview.XamlRoot)
+                         ?? instance.CurrentWindow;
+            window?.ShowToast(title, message, isError ? MaterialIconKind.AlertCircle : MaterialIconKind.Puzzle, isError);
+        }
+        catch (Exception e)
+        {
+            FoxyLogger.AddError(e);
         }
     }
     
@@ -863,7 +1171,7 @@ public static class ExtensionManager
 		await instance.AddExtension(webview, id, ExtensionSource.Chrome);
 	}
 
-    private enum ExtensionSource
+    public enum ExtensionSource
     {
         Chrome,
         Microsoft,
@@ -872,7 +1180,11 @@ public static class ExtensionManager
 	private static async Task AddExtension(this Instance instance, WebView2 webview, string id, ExtensionSource source)
     {
         Debug.WriteLine($"Adding extension {id}");
-        
+        await ProcessCrxFile(instance, webview, id, await DownloadCrx(id, source), isUpdate: false);
+    }
+
+    private static async Task<byte[]> DownloadCrx(string id, ExtensionSource source)
+    {
         byte[] crxBytes = null;
         Exception lastException = null;
 
@@ -927,7 +1239,7 @@ public static class ExtensionManager
             throw new Exception($"Failed to download extension {id}. All methods failed. Last error: {lastException?.Message}");
         }
         
-        await ProcessCrxFile(instance, webview, id, crxBytes);
+        return crxBytes;
     }
 
     private static async Task<byte[]> DownloadFromUrl(string url, int i = 10)
@@ -965,11 +1277,10 @@ public static class ExtensionManager
         return await response.Content.ReadAsByteArrayAsync();
     }
 
-    private static async Task ProcessCrxFile(Instance instance, WebView2 webview, string id, byte[] crxBytes)
+    /// <summary>Strips the CRX2/CRX3 header and unzips the extension into <paramref name="outFolder"/>.</summary>
+    private static void ExtractCrx(byte[] crxBytes, string outFolder)
     {
-        var crxStream = new MemoryStream(crxBytes);
-        crxStream.Position = 0;
-        
+        using var crxStream = new MemoryStream(crxBytes);
         using var br = new BinaryReader(crxStream, Encoding.UTF8, leaveOpen: true);
         
         var signature = new string(br.ReadChars(4));
@@ -1005,12 +1316,10 @@ public static class ExtensionManager
         
         var zipDataSize = crxStream.Length - crxStream.Position;
         var zipData = new byte[zipDataSize];
-        await crxStream.ReadExactlyAsync(zipData, 0, (int)zipDataSize);
+        crxStream.ReadExactly(zipData, 0, (int)zipDataSize);
         
         using var zipStream = new MemoryStream(zipData);
         using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read);
-        
-        var outFolder = Path.Combine(FoxyFileManager.BuildFolderPath(FoxyFileManager.FolderType.Extension, instance.Name), id);
         
         if (!Directory.Exists(outFolder))
         {
@@ -1024,71 +1333,126 @@ public static class ExtensionManager
         }
         catch (Exception ex)
         {
-            throw new Exception($"Failed to extract extension {id}: {ex.Message}", ex);
+            throw new Exception($"Failed to extract extension: {ex.Message}", ex);
         }
-        
-        var manifestPath = Path.Combine(outFolder, "manifest.json");
-        if (!File.Exists(manifestPath))
-        {
-            throw new Exception($"No manifest.json found in extracted extension {id}! It will not be loaded.");
-        }
-        
-        if (!_extensions.TryGetValue(instance.Name, out var extensions))
-        {
-            throw new Exception($"Extensions for instance name '{instance.Name}' not found");
-        }
-        
-        var extension1 = await GetFolderExtension(outFolder);
-        if (extension1 is null)
-        {
-            throw new Exception($"Failed to load extension from {outFolder}");
-        }
-        
-        var currentExtensions = await webview.CoreWebView2.Profile.GetBrowserExtensionsAsync();
-        currentExtensions = currentExtensions.Where(e => !_whitelist.Contains(e.Name)).ToList();
-        
-        // Remove the old one if it exists
-        var webviewEx = currentExtensions.FirstOrDefault(e => IsNamesEqual(e.Name, extension1.Manifest));
-        if (webviewEx != null)
-        {
-            await webviewEx.RemoveAsync();
-        }
-        
-        var oldExtension = extensions.FirstOrDefault(e => e.Id == webviewEx?.Id);
-        if (oldExtension is not null)
-        {
-            extensions.Remove(oldExtension);
-        }
-        
-        // Add the new extension
+    }
+
+    private static Task ProcessCrxFile(Instance instance, WebView2 webview, string id, byte[] crxBytes, bool isUpdate) =>
+        WithExtensionLock(instance, () => ProcessCrxFileLocked(instance, webview, id, crxBytes, isUpdate));
+
+    private static async Task ProcessCrxFileLocked(Instance instance, WebView2 webview, string id, byte[] crxBytes, bool isUpdate)
+    {
+        var outFolder = Path.Combine(FoxyFileManager.BuildFolderPath(FoxyFileManager.FolderType.Extension, instance.Name), id);
+        var scratchRoot = FoxyFileManager.BuildFolderPath(FoxyFileManager.FolderType.Cache, instance.Name);
+        var staging = Path.Combine(scratchRoot, "ExtensionStaging-" + Guid.NewGuid().ToString("N"));
+        var backup = Path.Combine(scratchRoot, "ExtensionBackup-" + Guid.NewGuid().ToString("N"));
+        var extensions = ExtensionList(instance);
+
+        // 1. unpack and validate the new version away from the installed one, so a bad download changes nothing
         try
         {
-            var browserExtension = await webview.CoreWebView2.Profile.AddBrowserExtensionAsync(outFolder);
-            
-            extensions.Add(new Extension
+            ExtractCrx(crxBytes, staging);
+            if (await GetFolderExtension(staging) is null)
+                throw new Exception($"Extension {id} has no readable manifest.json, so it was not installed.");
+        }
+        catch
+        {
+            FoxyFileManager.DeleteFolder(staging);
+            throw;
+        }
+
+        // 2. unload the installed copy and move its files aside (kept until the new copy is running)
+        var loaded = (await webview.CoreWebView2.Profile.GetBrowserExtensionsAsync())
+            .Where(e => !_whitelist.Contains(e.Name))
+            .ToList();
+        var oldEntry = extensions.FirstOrDefault(e => string.Equals(e.FolderPath, outFolder, StringComparison.OrdinalIgnoreCase));
+        if (oldEntry is not null)
+        {
+            if (loaded.FirstOrDefault(e => e.Id == oldEntry.Id) is { } loadedOld)
+                await loadedOld.RemoveAsync();
+            extensions.Remove(oldEntry);
+        }
+
+        var hadOldFolder = Directory.Exists(outFolder);
+
+        // puts the previous version back after a failed swap
+        async Task RestorePrevious()
+        {
+            try
             {
-                FolderPath = extension1.FolderPath,
-                Manifest = extension1.Manifest,
+                FoxyFileManager.DeleteFolder(outFolder);
+                if (hadOldFolder && Directory.Exists(backup))
+                    Directory.Move(backup, outFolder);
+                if (oldEntry is not null && Directory.Exists(outFolder))
+                {
+                    var restored = await webview.CoreWebView2.Profile.AddBrowserExtensionAsync(outFolder);
+                    if (!oldEntry.IsEnabled) await restored.EnableAsync(false);
+                    extensions.Add(new Extension
+                    {
+                        FolderPath = oldEntry.FolderPath,
+                        Manifest = oldEntry.Manifest,
+                        WebviewName = restored.Name,
+                        Id = restored.Id,
+                        IsEnabled = oldEntry.IsEnabled,
+                    });
+                }
+            }
+            catch (Exception restoreError)
+            {
+                FoxyLogger.AddError(restoreError);
+            }
+            ExtensionsModified?.Invoke(instance.Name);
+        }
+
+        Extension added;
+        try
+        {
+            if (hadOldFolder)
+                Directory.Move(outFolder, backup);
+            Directory.CreateDirectory(Path.GetDirectoryName(outFolder)!);
+            Directory.Move(staging, outFolder);
+
+            // re-read from the final folder: localized names are resolved relative to it
+            var installed = await GetFolderExtension(outFolder)
+                            ?? throw new Exception($"Failed to load extension from {outFolder}");
+            var browserExtension = await webview.CoreWebView2.Profile.AddBrowserExtensionAsync(outFolder);
+
+            added = new Extension
+            {
+                FolderPath = installed.FolderPath,
+                Manifest = installed.Manifest,
                 WebviewName = browserExtension.Name,
-                Id = browserExtension.Id
-            });
-            
+                Id = browserExtension.Id,
+                IsEnabled = true,
+            };
+
+            // an update keeps the extension off if the user had turned it off
+            if (IsDisabled(instance, added))
+            {
+                await browserExtension.EnableAsync(false);
+                added.IsEnabled = false;
+            }
+
+            extensions.Add(added);
             Debug.WriteLine($"Successfully added extension {id} with WebView ID {browserExtension.Id}");
         }
         catch (Exception ex)
         {
-            throw new Exception($"Failed to add extension {id} to WebView: {ex.Message}", ex);
+            await RestorePrevious();
+            throw new Exception($"Failed to install extension {id}: {ex.Message}", ex);
         }
-        
+        finally
+        {
+            FoxyFileManager.DeleteFolder(staging);
+        }
+
+        FoxyFileManager.DeleteFolder(backup);
         ExtensionsModified?.Invoke(instance.Name);
 
-        var messageBox = new ContentDialog()
-        {
-            Title = "Extension installed",
-            PrimaryButtonText = "OK",
-            XamlRoot = webview.XamlRoot,
-        };
-        await messageBox.ShowAsync();
+        var name = GetDisplayName(added);
+        Notify(instance, webview,
+            isUpdate ? "Extension updated" : "Extension installed",
+            isUpdate ? $"{name} is now version {added.Manifest.Version}." : $"{name} was added. Manage it in Settings > Extensions.");
     }
 
 	private static string? ExtractExtensionIdFromUrl(string url)
@@ -1156,13 +1520,29 @@ public static class ExtensionManager
 
 		foreach (var item in folders.items??[])
 		{
-			var manifestFile = Directory.GetFiles(item.path, "manifest.json", SearchOption.TopDirectoryOnly)
-				.FirstOrDefault();
+			var manifestFile = Path.Combine(item.path, "manifest.json");
+			if (!File.Exists(manifestFile)) continue;
 
-			if (manifestFile is null || await FoxyFileManager.ReadFromFileAsync(manifestFile) is not 
-				    { code: FoxyFileManager.ReturnCode.Success, content: not null } result) continue;
+			(FoxyFileManager.ReturnCode code, string? content) result;
+			try { result = await FoxyFileManager.ReadFromFileAsync(manifestFile); }
+			catch (Exception e)
+			{
+				FoxyLogger.AddWarning($"Could not read {manifestFile}", e.Message);
+				continue;
+			}
+			if (result is not { code: FoxyFileManager.ReturnCode.Success, content: not null }) continue;
 			
-			var manifest = ExtensionManifestParser.Parse(result.content, item.path);
+			// one broken extension folder must not stop every tab (and window) from loading
+			ExtensionManifestBase manifest;
+			try
+			{
+				manifest = ExtensionManifestParser.Parse(result.content, item.path);
+			}
+			catch (Exception e)
+			{
+				FoxyLogger.AddWarning($"Skipping extension folder with an unreadable manifest: {item.path}", e.Message);
+				continue;
+			}
 			yield return new Extension { FolderPath = item.path, Manifest = manifest};
 		}
 	}
@@ -1175,8 +1555,16 @@ public static class ExtensionManager
 		if (manifestFile is null || await FoxyFileManager.ReadFromFileAsync(manifestFile) is not 
 			    { code: FoxyFileManager.ReturnCode.Success, content: not null } result) return null;
 		
-		var manifest = ExtensionManifestParser.Parse(result.content, extensionFolder);
-		return new Extension { FolderPath = extensionFolder, Manifest = manifest};
+		try
+		{
+			var manifest = ExtensionManifestParser.Parse(result.content, extensionFolder);
+			return new Extension { FolderPath = extensionFolder, Manifest = manifest};
+		}
+		catch (Exception e)
+		{
+			FoxyLogger.AddWarning($"Unreadable extension manifest: {extensionFolder}", e.Message);
+			return null;
+		}
 	}
 
 	public static List<Extension> GetSavedExtensions(this Instance instance)

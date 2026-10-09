@@ -83,6 +83,7 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
 
             </Grid.ColumnDefinitions>
             
@@ -104,6 +105,7 @@
                      PlaceholderText="Search or enter a URL"/>
             <generic:FIconButton Grid.Column="4" x:Name="ButtonSearch" Height="18" Width="18" Content="{material:MaterialIconExt Kind=Search}" OnClick="ButtonSearch_OnClick"/>
             <generic:FIconButton Grid.Column="5" x:Name="ButtonEngine" Height="18" Width="18" Padding="2" Content="{material:MaterialIconExt Kind=AbTesting}" OnClick="ButtonEngine_OnClick"/>
+            <material:MaterialIcon Grid.Column="6" x:Name="PrivateIcon" Kind="Incognito" Height="16" Width="16" Margin="2,0,4,0" Visibility="Collapsed"/>
         </Grid>
         <generic:FTextButton Grid.Column="3" x:Name="UpdateButton" x:FieldModifier="internal" CornerRadius="13" ButtonText="Update Available: ... ➔ ..." Visibility="Collapsed" OnClick="UpdateButton_OnOnClick"/>
         <Border Grid.Column="4" x:Name="DragZone" Width="150" x:FieldModifier="internal" Background="Transparent"/>

@@ -67,7 +67,15 @@ public partial class WebviewTab : ObservableObject
 
 	private async Task CoreWebView2Initialization()
 	{
-		await Core.EnsureCoreWebView2Async(TabManager.WebsiteEnvironment);
+		if (TabManager.IsPrivate)
+		{
+			// InPrivate: an off-the-record profile shared by all private tabs, discarded when they all close
+			var options = TabManager.WebsiteEnvironment!.CreateCoreWebView2ControllerOptions();
+			options.IsInPrivateModeEnabled = true;
+			await Core.EnsureCoreWebView2Async(TabManager.WebsiteEnvironment, options);
+		}
+		else
+			await Core.EnsureCoreWebView2Async(TabManager.WebsiteEnvironment);
 		
 		// await TabManager.Instance.AddExtensions(Core);
 		//  TabManager.Instance.RegisterStoreButtonCallback(json => {
@@ -82,33 +90,38 @@ public partial class WebviewTab : ObservableObject
 		
 		//await TabManager.Instance.InjectStoreButtonInterceptor(Core);
 
-		var extensionSetupTask = TabManager.Instance.SetupExtensionSupport(Core);
+		// extensions live in the normal profile; the InPrivate profile cannot load them
+		var extensionSetupTask = TabManager.IsPrivate
+			? Task.CompletedTask
+			: TabManager.Instance.SetupExtensionSupport(Core);
 		
 		// Core.AllowExternalDrop = true;
 		Core.AllowDrop = true;
 		// Core.CompositeMode = ElementCompositeMode.MinBlend;
 		
+		// only seen when the themed downloads panel is turned off in settings
 		Core.CoreWebView2.DefaultDownloadDialogCornerAlignment = CoreWebView2DefaultDownloadDialogCornerAlignment.TopLeft;
 		Core.CoreWebView2.DefaultDownloadDialogMargin = new Point(0, 0);
-		Core.CoreWebView2.Profile.PreferredColorScheme = CoreWebView2PreferredColorScheme.Auto;
-		// Core.CoreWebView2.Settings.AreDevToolsEnabled = true;
-		
-		// Core.CoreWebView2.Settings.IsWebMessageEnabled = false;     
-		Core.CoreWebView2.Settings.IsGeneralAutofillEnabled = false;
-		Core.CoreWebView2.Profile.IsPasswordAutosaveEnabled = false;
 
-		// Core.CoreWebView2.Profile.PreferredTrackingPreventionLevel = CoreWebView2TrackingPreventionLevel.Balanced;
-		// Core.CoreWebView2.Settings.IsSwipeNavigationEnabled = false;
+		_defaultUserAgent = Core.CoreWebView2.Settings.UserAgent;
+		ApplySettings();
 
 		// handle events
 		Core.CoreWebView2.DocumentTitleChanged += OnDocumentTitleChanged;
 		Core.CoreWebView2.FaviconChanged += OnFaviconChanged;
 		Core.CoreWebView2.SourceChanged += CoreWebView2OnSourceChanged;
+		Core.CoreWebView2.NavigationCompleted += CoreWebView2OnNavigationCompleted;
 		Core.CoreWebView2.NewWindowRequested += CoreWebView2OnNewWindowRequested;
 		Core.CoreWebView2.NavigationStarting += CoreWebView2OnNavigationStarting;
 		Core.CoreWebView2.WindowCloseRequested += CoreWebView2OnWindowCloseRequested;
 		Core.CoreWebView2.ProcessFailed += CoreWebView2OnProcessFailed;
-		Core.CoreWebView2.PermissionRequested += CoreWebView2OnPermissionRequested;
+
+		// themed replacements for the browser engine's own UI, shown by the window that hosts this tab
+		Core.CoreWebView2.PermissionRequested += (_, args) => TabManager.Window.OnTabPermissionRequested(this, args);
+		Core.CoreWebView2.ContextMenuRequested += (_, args) => TabManager.Window.OnTabContextMenuRequested(this, args);
+		Core.CoreWebView2.ScriptDialogOpening += (_, args) => TabManager.Window.OnTabScriptDialogOpening(this, args);
+		Core.CoreWebView2.BasicAuthenticationRequested += (_, args) => TabManager.Window.OnTabBasicAuthenticationRequested(this, args);
+		Core.CoreWebView2.DownloadStarting += (_, args) => TabManager.Window.OnTabDownloadStarting(this, args);
 		
 		//performance stuff
 		var processId = Core.CoreWebView2.BrowserProcessId;
@@ -123,6 +136,55 @@ public partial class WebviewTab : ObservableObject
 		});
 
 		await Task.WhenAll(extensionSetupTask, NavigateOrSearch(_startingUrl, true));
+	}
+
+	private string? _defaultUserAgent;
+
+	/// <summary>
+	/// Pushes <see cref="DataObjects.Settings.BrowserSettings"/> into this tab's WebView2. Called once the core
+	/// exists and again by the window whenever a setting changes, so changes apply without reopening tabs.
+	/// </summary>
+	public void ApplySettings()
+	{
+		if (Core.CoreWebView2 is not { } core) return;
+		var s = TabManager.Instance.Settings;
+
+		try
+		{
+			var settings = core.Settings;
+			settings.AreDevToolsEnabled = s.DevToolsEnabled;
+			settings.AreBrowserAcceleratorKeysEnabled = s.BrowserAcceleratorKeysEnabled;
+			settings.IsStatusBarEnabled = s.StatusBarEnabled;
+			settings.IsZoomControlEnabled = s.ZoomControlEnabled;
+			settings.IsPinchZoomEnabled = s.PinchZoomEnabled;
+			settings.IsSwipeNavigationEnabled = s.SwipeNavigationEnabled;
+			settings.IsGeneralAutofillEnabled = s.GeneralAutofillEnabled;
+			settings.IsPasswordAutosaveEnabled = s.PasswordAutosaveEnabled;
+			settings.IsReputationCheckingRequired = s.SmartScreenEnabled;
+			// with this off, WebView2 raises ScriptDialogOpening and the window shows the themed dialog
+			settings.AreDefaultScriptDialogsEnabled = !s.ThemedDialogs;
+
+			var userAgent = string.IsNullOrWhiteSpace(s.CustomUserAgent) ? _defaultUserAgent : s.CustomUserAgent.Trim();
+			if (userAgent is not null && settings.UserAgent != userAgent)
+				settings.UserAgent = userAgent;
+
+			var profile = core.Profile;
+			profile.PreferredColorScheme = s.WebsiteColorScheme;
+			profile.PreferredTrackingPreventionLevel = s.TrackingPrevention;
+			profile.IsPasswordAutosaveEnabled = s.PasswordAutosaveEnabled;
+			profile.IsGeneralAutofillEnabled = s.GeneralAutofillEnabled;
+
+			var downloadFolder = string.IsNullOrWhiteSpace(s.DownloadFolder) || !Directory.Exists(s.DownloadFolder)
+				? DownloadManager.GetSystemDownloadsFolder()
+				: s.DownloadFolder;
+			if (downloadFolder is not null && profile.DefaultDownloadFolderPath != downloadFolder)
+				profile.DefaultDownloadFolderPath = downloadFolder;
+		}
+		catch (Exception e)
+		{
+			// the core can be closing while settings change
+			FoxyLogger.AddError(e);
+		}
 	}
 	
 	private static void BoostProcessPriority(int processId)
@@ -149,15 +211,6 @@ public partial class WebviewTab : ObservableObject
 		{
 			args.Cancel = true;
 		}
-	}
-
-	private void CoreWebView2OnPermissionRequested(CoreWebView2 sender, CoreWebView2PermissionRequestedEventArgs args)
-	{
-		//temp to get rid of the camera request - TODO nvm, does not work
-		if (args.PermissionKind == CoreWebView2PermissionKind.Camera)
-			args.Handled = true;
-		
-		//TODO handle this properly
 	}
 
 	private void CoreWebView2OnProcessFailed(CoreWebView2 sender, CoreWebView2ProcessFailedEventArgs args) 
@@ -191,6 +244,25 @@ public partial class WebviewTab : ObservableObject
 	private void CoreWebView2OnSourceChanged(CoreWebView2 sender, CoreWebView2SourceChangedEventArgs args)
 	{
 		Info.Url = Core.CoreWebView2.Source;
+
+		// same-document navigations (single-page apps) never raise NavigationCompleted
+		if (!args.IsNewDocument)
+			RecordHistory();
+	}
+
+	private void CoreWebView2OnNavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
+	{
+		if (args.IsSuccess)
+			RecordHistory();
+	}
+
+	private bool ShouldRecordHistory => !TabManager.IsPrivate && TabManager.Instance.Settings.SaveHistory;
+
+	private void RecordHistory()
+	{
+		if (!ShouldRecordHistory) return;
+		var core = Core.CoreWebView2;
+		TabManager.Instance.History.RecordVisit(core.Source, core.DocumentTitle, core.FaviconUri);
 	}
 
 	public async Task NavigateOrSearch(string? url) => await NavigateOrSearch(url, false);
@@ -253,11 +325,15 @@ public partial class WebviewTab : ObservableObject
 	private void OnDocumentTitleChanged(object sender, object e)
 	{
 		Info.Title = Core.CoreWebView2.DocumentTitle;
+		if (ShouldRecordHistory)
+			TabManager.Instance.History.UpdateDetails(Core.CoreWebView2.Source, Info.Title, null);
 	}
 
-	private async void OnFaviconChanged(object sender, object e)
+	private void OnFaviconChanged(object sender, object e)
 	{
 		Info.FavIconUrl = Core.CoreWebView2.FaviconUri ?? "";
+		if (ShouldRecordHistory)
+			TabManager.Instance.History.UpdateDetails(Core.CoreWebView2.Source, null, Info.FavIconUrl);
 	}
 	
 	private ObservableCollection<FMenuItem> BaseItems =>

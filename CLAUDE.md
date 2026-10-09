@@ -22,12 +22,12 @@ the solution.)
 | App entry | `App.xaml(.cs)`, `GlobalUsingStatements.cs`, `app.manifest`, `Package.appxmanifest` |
 | App spine / services | `DataManagement/` — `AppServer` (static app lifecycle + single-instance server), `Instance` (a browser profile/window), `TabManager`, `DownloadManager`, `HistoryManager`, `SitePermissionManager`, `ExtensionManager` (Chrome-extension manifest parsing + loading, enable/update/unpacked), `BackupManagement`, `FoxyFileManager`, `FoxyLogger` |
 | Domain models | `DataObjects/Basic/` — POCOs (`Theme`, `GlobalSettings`, `InstanceSettings`, `TabGroup`, `Download`, `HistoryEntry`, `SitePermission`, `Extension`, `WebsiteInfo`, `VersionInfo`, `BackupModel`, `InstanceCache`…) |
-| Tabs & AI | `DataObjects/Complex/` — `WebviewTab`, `AiChat`, `AiHandler`, `FoxyAutoSaver`, `FoxyAutoSaverLockedList`; `DataObjects/WebviewTab/` — `WebviewTab` partials (`WTMain`, `WTExtensionManagement`, `WTExtensionManifest`, `WTPerformance`) |
+| Tabs & AI | `DataObjects/Complex/` — `WebviewTab`, `AiChat`, `AiHandler`, `FoxyAutoSaver`, `FoxyAutoSaverLockedList`; `DataObjects/Complex/Ai/` — assistant providers (`AiConversation`, `ClaudeConversation`, `OpenAiCompatibleConversation`, `AiCredentials`), tools (`BrowserTools`, `PageAgent`: page-as-text reading + DevTools input) and `AiPermissions`, see `Docs/architecture/ai-assistant.md`; `DataObjects/WebviewTab/` — `WebviewTab` partials (`WTMain`, `WTExtensionManagement`, `WTExtensionManifest`, `WTPerformance`) |
 | Settings framework | `DataObjects/Settings/` — `ISetting`, `Setting`, `BrowserSettings`, `SettingClasses`, `SettingsUiHelper`, `ThemedUserControl` |
 | Browser window UI | `Controls/MainWindow/` — `MainWindow` (+ `MainWindow.WebUi.cs`: hosts the themed web UI), `TopBar`, `LeftBar`/`NewLeftBar`, `TabCard`, `TabGroupCard`, `NewTabCard`, `NewTabGroupCard`, `BookmarkCard`, `InstanceCard`, `AiChatWindow` |
 | Themed web UI | `Controls/WebUi/` — code-built replacements for WebView2's UI: `WebPromptHost`/`WebPromptCard` (permission, alert/confirm/prompt, sign-in), `DownloadsPanel`, `HistoryPanel`, `ToastHost`, `WebUiStyle`. See `Docs/architecture/web-ui.md` |
 | Home page + widgets | `Controls/HomePage/` — `HomePage`, `Widget`, `WidgetEditOverlay`, `Widgets/` (`DateTime`, `SpeedTest`, `Title`, `Example`) |
-| Settings UI | `Controls/SettingsPage/` (+ `SettingsCustomControls/`: `ExtensionController`, `SitePermissionsController`, `BrowsingDataController`) |
+| Settings UI | `Controls/SettingsPage/` (+ `SettingsCustomControls/`: `ExtensionController`, `SitePermissionsController`, `BrowsingDataController`, `AiToolPermissionsController`) |
 | Reusable controls | `Controls/Generic/` — `F`-prefixed primitives (`FIconButton`, `FTextButton`, `FTextInput`, `FRGBInput`, `FContextMenu`, `FCheckBox`, `FProgressBar`, `FoxyPopup`, `FTODO`, `TransparentWindow`) |
 | Converters / helpers | `Controls/Helpers/` — value converters, `Animator`, `VisualCaptureHelper` |
 | Static data | `StaticData/` — `DefaultThemes`, `InfoGetter` |
@@ -54,7 +54,7 @@ the solution.)
 WinUI 3 / Windows App SDK 1.8 + CsWinRT · WebView2 (Chromium) as the tab engine ·
 CommunityToolkit.Mvvm (`ObservableObject` + source-gen) and CommunityToolkit.WinUI (animations,
 Markdown) · Material.Icons.WinUI3 · Win2D (`Microsoft.Graphics.Win2D`) · WinUIEx (window
-management) · Mistral.SDK (AI chat) · ColorCode.WinUI (syntax highlighting).
+management) · Anthropic SDK (AI chat; OpenAI-compatible servers over plain HTTP) · ColorCode.WinUI (syntax highlighting).
 
 ## Code lookup workflow
 

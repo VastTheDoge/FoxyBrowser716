@@ -182,42 +182,9 @@ public sealed partial class WebPromptCard : ThemedUserControl
 		if (_textInput is not null) _textInput.CurrentTheme = CurrentTheme;
 		if (_userInput is not null) _userInput.CurrentTheme = CurrentTheme;
 		if (_checkBox is not null) _checkBox.CurrentTheme = CurrentTheme;
-		if (_passwordInput is not null) ThemePasswordBox(_passwordInput, CurrentTheme);
+		if (_passwordInput is not null) WebUiStyle.ThemePasswordBox(_passwordInput, CurrentTheme);
 
 		foreach (var (button, spec) in _buttons)
 			button.CurrentTheme = spec.IsDanger ? WebUiStyle.DangerTheme(CurrentTheme) : CurrentTheme;
-	}
-
-	/// <summary>
-	/// PasswordBox has no F-control equivalent; restyle it through its lightweight-styling resources so the
-	/// hover/focus states also use theme colors instead of the system ones.
-	/// </summary>
-	private static void ThemePasswordBox(PasswordBox box, Theme theme)
-	{
-		var background = new SolidColorBrush(theme.PrimaryAccentColorSlightTransparent);
-		var focusedBackground = new SolidColorBrush(theme.PrimaryBackgroundColorSlightTransparent);
-		var border = new SolidColorBrush(theme.SecondaryAccentColorSlightTransparent);
-		var focusedBorder = new SolidColorBrush(theme.PrimaryHighlightColor);
-		var foreground = new SolidColorBrush(theme.PrimaryForegroundColor);
-		var placeholder = new SolidColorBrush(theme.SecondaryForegroundColor);
-
-		box.Background = background;
-		box.BorderBrush = border;
-		box.Foreground = foreground;
-		box.SelectionHighlightColor = new SolidColorBrush(theme.SecondaryHighlightColor);
-
-		box.Resources["TextControlBackground"] = background;
-		box.Resources["TextControlBackgroundPointerOver"] = background;
-		box.Resources["TextControlBackgroundFocused"] = focusedBackground;
-		box.Resources["TextControlBorderBrush"] = border;
-		box.Resources["TextControlBorderBrushPointerOver"] = border;
-		box.Resources["TextControlBorderBrushFocused"] = focusedBorder;
-		box.Resources["TextControlForeground"] = foreground;
-		box.Resources["TextControlForegroundPointerOver"] = foreground;
-		box.Resources["TextControlForegroundFocused"] = foreground;
-		box.Resources["TextControlPlaceholderForeground"] = placeholder;
-		box.Resources["TextControlPlaceholderForegroundPointerOver"] = placeholder;
-		box.Resources["TextControlPlaceholderForegroundFocused"] = placeholder;
-		box.Resources["TextControlButtonForeground"] = foreground;
 	}
 }

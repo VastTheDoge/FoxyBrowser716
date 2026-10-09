@@ -126,4 +126,37 @@ internal static class WebUiStyle
 		if (time.Date == DateTime.Today.AddDays(-1)) return $"Yesterday {time.ToShortTimeString()}";
 		return time.ToShortDateString();
 	}
+
+	/// <summary>
+	/// PasswordBox has no F-control equivalent; restyle it through its lightweight-styling resources so the
+	/// hover/focus states also use theme colors instead of the system ones.
+	/// </summary>
+	public static void ThemePasswordBox(PasswordBox box, Theme theme)
+	{
+		var background = new SolidColorBrush(theme.PrimaryAccentColorSlightTransparent);
+		var focusedBackground = new SolidColorBrush(theme.PrimaryBackgroundColorSlightTransparent);
+		var border = new SolidColorBrush(theme.SecondaryAccentColorSlightTransparent);
+		var focusedBorder = new SolidColorBrush(theme.PrimaryHighlightColor);
+		var foreground = new SolidColorBrush(theme.PrimaryForegroundColor);
+		var placeholder = new SolidColorBrush(theme.SecondaryForegroundColor);
+
+		box.Background = background;
+		box.BorderBrush = border;
+		box.Foreground = foreground;
+		box.SelectionHighlightColor = new SolidColorBrush(theme.SecondaryHighlightColor);
+
+		box.Resources["TextControlBackground"] = background;
+		box.Resources["TextControlBackgroundPointerOver"] = background;
+		box.Resources["TextControlBackgroundFocused"] = focusedBackground;
+		box.Resources["TextControlBorderBrush"] = border;
+		box.Resources["TextControlBorderBrushPointerOver"] = border;
+		box.Resources["TextControlBorderBrushFocused"] = focusedBorder;
+		box.Resources["TextControlForeground"] = foreground;
+		box.Resources["TextControlForegroundPointerOver"] = foreground;
+		box.Resources["TextControlForegroundFocused"] = foreground;
+		box.Resources["TextControlPlaceholderForeground"] = placeholder;
+		box.Resources["TextControlPlaceholderForegroundPointerOver"] = placeholder;
+		box.Resources["TextControlPlaceholderForegroundFocused"] = placeholder;
+		box.Resources["TextControlButtonForeground"] = foreground;
+	}
 }

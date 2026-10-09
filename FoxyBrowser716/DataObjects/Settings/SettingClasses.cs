@@ -29,6 +29,8 @@ public class StringSetting(string name, string description, string defaultValue,
 {
     public bool Multiline { get; } = multiline;
 }
+/// <summary>A password box; the value is never shown. Used for API keys.</summary>
+public class SecretSetting(string name, string description, string defaultValue, Action<string> onValueChanged) : Setting<string>(name, description, defaultValue, onValueChanged);
 
 // complex types
 public class ComboSetting(string name, string description, int defaultValue, Action<int> onValueChanged, params (string name, int id)[] options) : Setting<int>(name, description, defaultValue, onValueChanged)

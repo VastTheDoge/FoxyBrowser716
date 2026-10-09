@@ -12,7 +12,7 @@ public partial class TitleWidget : WidgetBase
 		InitializeComponent();
 		WidgetSettings =
 		[
-			new BoolSetting("a", "b", false, (v) => { }),
+			new BoolSetting("Show Links", "Website and GitHub buttons", true, v => LinksPanel.Visibility = v ? Visibility.Visible : Visibility.Collapsed),
 		];
 	}
 	

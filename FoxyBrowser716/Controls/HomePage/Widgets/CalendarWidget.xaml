@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<homePage:WidgetBase
+    x:Class="FoxyBrowser716.Controls.HomePage.Widgets.CalendarWidget"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:homePage="using:FoxyBrowser716.Controls.HomePage"
+    xmlns:generic="using:FoxyBrowser716.Controls.Generic"
+    xmlns:material="using:Material.Icons.WinUI3"
+    mc:Ignorable="d" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+    <Border x:Name="Card" Margin="4" CornerRadius="10" BorderThickness="2" Padding="6">
+        <!-- fixed 224px-wide design (7 x 32px columns, always 6 week rows) so the Viewbox never re-scales between months -->
+        <Viewbox Stretch="Uniform">
+            <StackPanel Width="224" Spacing="2">
+                <Grid Height="28">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="28"/>
+                    </Grid.ColumnDefinitions>
+                    <generic:FIconButton x:Name="ButtonPrevious" Grid.Column="0" Width="24" Height="24" Padding="2"
+                                         Content="{material:MaterialIconExt Kind=ChevronLeft}" OnClick="ButtonPrevious_OnClick"/>
+                    <TextBlock x:Name="MonthText" Grid.Column="1" FontSize="15" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               Tapped="MonthText_OnTapped"/>
+                    <generic:FIconButton x:Name="ButtonNext" Grid.Column="2" Width="24" Height="24" Padding="2"
+                                         Content="{material:MaterialIconExt Kind=ChevronRight}" OnClick="ButtonNext_OnClick"/>
+                </Grid>
+                <Grid x:Name="WeekdayGrid" Height="20"/>
+                <Grid x:Name="DaysGrid" Height="156"/>
+            </StackPanel>
+        </Viewbox>
+    </Border>
+</homePage:WidgetBase>

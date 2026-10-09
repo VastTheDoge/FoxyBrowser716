@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<homePage:WidgetBase
+    x:Class="FoxyBrowser716.Controls.HomePage.Widgets.SearchWidget"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:homePage="using:FoxyBrowser716.Controls.HomePage"
+    xmlns:generic="using:FoxyBrowser716.Controls.Generic"
+    mc:Ignorable="d" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+    <!-- no Viewbox: the box stretches to the widget width and the font follows the widget height -->
+    <Grid x:Name="RootGrid" Margin="2" ColumnSpacing="6" SizeChanged="RootGrid_OnSizeChanged">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Image x:Name="EngineIcon" Grid.Column="0" Width="20" Height="20" Stretch="Uniform" VerticalAlignment="Center"/>
+        <generic:FTextInput x:Name="SearchInput" Grid.Column="1" VerticalAlignment="Center"
+                            PlaceHolderText="Search the web" EnterPressed="SearchInput_OnEnterPressed"/>
+    </Grid>
+</homePage:WidgetBase>

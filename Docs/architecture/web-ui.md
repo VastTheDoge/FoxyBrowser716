@@ -1,4 +1,4 @@
-# Web UI: themed engine UI, site permissions, downloads, history, private windows
+# Web UI: themed engine UI, site permissions, downloads, history, private instances
 
 WebView2 ships its own Chromium UI for the page context menu, permission prompts, `alert`/`confirm`/`prompt`,
 HTTP sign-in and the download flyout. None of it follows FoxyBrowser themes, so each is replaced by themed UI
@@ -44,8 +44,7 @@ Resolution for a `PermissionRequested`:
 Allow/Block answers the page immediately. Remembering is a separate step, controlled by
 `RememberPermissionChoices`: **Ask** (default) queues a "Remember this for {site}?" follow-up prompt
 (`WebPromptHost.EnqueueNext`, so it shows before the tab's other prompts) with "Just this time" / "Remember";
-**Always** saves straight away and shows a toast; **Never** saves nothing. Private windows read remembered
-choices but never add to them. Per-kind defaults follow Chrome's: motion sensors and autoplay are allowed,
+**Always** saves straight away and shows a toast; **Never** saves nothing. Per-kind defaults follow Chrome's: motion sensors and autoplay are allowed,
 everything else asks.
 
 `SavesInProfile` is always set to `false` when FoxyBrowser decides, so our list is the source of truth and the
@@ -70,7 +69,7 @@ read or search it — only `ClearBrowsingDataAsync(BrowsingHistory)`. So FoxyBro
 
 One entry per URL (title, favicon, first/last visit, visit count). Recorded from `NavigationCompleted`
 (success) and from same-document `SourceChanged` (single-page apps); title/favicon arrive later and update the
-entry. Only http/https/file URLs, never in private windows, and only while `SaveHistory` is on. Expired entries
+entry. Only http/https/file URLs, and only while `SaveHistory` is on. Expired entries
 (`HistoryRetentionDays`) are pruned at startup only — pruning on change would fire per keystroke of the
 number box. Used by the history panel and the address-bar suggestions (`Search` ranks host-prefix matches,
 visit count and recency).
@@ -80,19 +79,17 @@ the auto-saver serializes a snapshot, unlike `FoxyAutoSaverList<T>` which enumer
 the timer thread. `FoxyAutoSaver` itself locks its queue bookkeeping (requests come from the UI thread, saves
 run on its timer thread) and logs a failed save instead of letting it escape the timer callback.
 
-## Private windows
+## Private instances
 
-A window is private when opened with "New private window" (or "Open link in private window"), or when its
-instance has `BrowserSettings.PrivateBrowsing` on — then every window of that instance is private (applies
-to windows opened after the change; a WebView2 cannot switch modes). `Instance.CreateWindow(isPrivate)` →
-`MainWindow.IsPrivate` → `TabManager.IsPrivate` → tabs call
-`EnsureCoreWebView2Async(env, options)` with `IsInPrivateModeEnabled`. All private tabs share one
-off-the-record session per instance (each instance has its own WebView2 user data folder) that is discarded
-when the last one closes. In a private window: no history, a session-only `DownloadManager(null)`, permission
-choices are read but never remembered, extensions are not loaded (the Extensions menu says so), the top bar shows an incognito icon, and `BackupManagement` skips the
-window (and a backup holding only private windows counts as nothing to restore, so startup still opens a
-window). Links opened from other apps go to a normal window when the instance has one. Tabs cannot be dragged between private and normal
-windows (`TabManager.CanAcceptTabsFrom`, the same check that keeps tabs inside their instance).
+Private is a property of an instance, never of a window (browser → instances → windows → tabs; every window of
+an instance is the same kind). `BrowserSettings.PrivateBrowsing` is read once into `Instance.IsPrivate` when the
+instance loads, so changing it takes effect after a restart and an instance never has mixed windows. It does one
+thing: tabs (and `WebPageWidget`) call `EnsureCoreWebView2Async(env, options)` with `IsInPrivateModeEnabled`, so
+the instance's pages share one off-the-record WebView2 session, discarded when the last of them closes.
+
+Everything else follows its own setting: FoxyBrowser's history (`SaveHistory`), the downloads list, remembered
+permissions (`RememberPermissionChoices`) and session restore behave as in any instance, and extensions load the
+same way (`SetupExtensionSupport` runs on every tab). Open questions: `Docs/todo/private-instances.md`.
 
 ## Settings
 

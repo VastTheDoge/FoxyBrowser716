@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using FoxyBrowser716.Controls.MainWindow;
 using FoxyBrowser716.Controls.SettingsPage.SettingsCustomControls;
 using FoxyBrowser716.DataManagement;
+using FoxyBrowser716.DataObjects.Complex.Ai;
 using Microsoft.Web.WebView2.Core;
 
 namespace FoxyBrowser716.DataObjects.Settings;
@@ -28,6 +29,8 @@ public class SettingInfoAttribute : Attribute
     public bool AllowWebsiteUris { get; init; } = false;
     public int MinValue { get; init; } = int.MinValue;
     public int MaxValue { get; init; } = int.MaxValue;
+    /// <summary>String shown as a password box. The property must be [JsonIgnore] and store the value itself (e.g. in the Credential Locker).</summary>
+    public bool Secret { get; init; } = false;
 }
 
 /// <summary>Order here is the order categories appear on the settings page.</summary>
@@ -39,6 +42,7 @@ public enum SettingsCategory
     Downloads,
     History,
     Extensions,
+    Assistant,
     WebView2,
     Misc
 }
@@ -50,6 +54,7 @@ public static class SettingsCategoryNames
         SettingsCategory.Privacy => "Privacy & Security",
         SettingsCategory.Permissions => "Site Permissions",
         SettingsCategory.WebView2 => "Browser Engine",
+        SettingsCategory.Assistant => "AI Assistant",
         _ => category.ToString(),
     };
 }
@@ -102,13 +107,15 @@ public sealed partial class BrowserSettings : ObservableObject
                         // every enum value becomes an option; ids are the underlying values
                         var enumType = field.PropertyType;
                         var enumOptions = Enum.GetValues(enumType).Cast<object>()
-                            .Select(v => (HumanizeName(v.ToString()!), Convert.ToInt32(v)))
+                            .Select(v => (EnumOptionName(enumType, v), Convert.ToInt32(v)))
                             .ToArray();
                         catControls.Add(new ComboSetting(name, description, Convert.ToInt32(e),
                             id => field.SetValue(this, Enum.ToObject(enumType, id)), enumOptions));
                         break;
                     case string s:
-                        if (attribute.Options is { } comboOptions)
+                        if (attribute.Secret)
+                            catControls.Add(new SecretSetting(name, description, s, s1 => field.SetValue(this, s1)));
+                        else if (attribute.Options is { } comboOptions)
                         {
                             //TODO: clean up and test.
                             var i = 0;
@@ -176,6 +183,10 @@ public sealed partial class BrowserSettings : ObservableObject
     private static string HumanizeName(string name) =>
         string.Concat(name.Select((ch, i) => i > 0 && char.IsUpper(ch) && !char.IsUpper(name[i - 1]) ? " " + ch : ch.ToString()));
 
+    /// <summary>The member's [Description] if it has one, otherwise its humanized name.</summary>
+    private static string EnumOptionName(Type enumType, object value) =>
+        enumType.GetField(value.ToString()!)?.GetCustomAttribute<DescriptionAttribute>()?.Description ?? HumanizeName(value.ToString()!);
+
     #region General
     //TODO this should be app wide.
     [SettingInfo(Category = SettingsCategory.General,
@@ -207,7 +218,7 @@ public sealed partial class BrowserSettings : ObservableObject
 
     #region Privacy
     [SettingInfo(Category = SettingsCategory.Privacy, Name = "Private browsing",
-        Description = "Open every window of this instance InPrivate: cookies, site data and cache are thrown away when its windows close, no history is saved, downloads are only listed for the session and extensions are not loaded. Applies to windows opened after changing it.")]
+        Description = "Run this instance's pages InPrivate: cookies, site data and cache are thrown away when the browser closes. FoxyBrowser's own history, downloads list and remembered permissions still follow their settings. Takes effect after restarting FoxyBrowser.")]
     public bool PrivateBrowsing { get; set => SetProperty(ref field, value); } = false;
 
     [SettingInfo(Category = SettingsCategory.Privacy, Name = "Tracking prevention",
@@ -298,7 +309,7 @@ public sealed partial class BrowserSettings : ObservableObject
 
     #region History
     [SettingInfo(Category = SettingsCategory.History, Name = "Save browsing history",
-        Description = "Remember the pages you visit (never in private windows).")]
+        Description = "Remember the pages you visit.")]
     public bool SaveHistory { get; set => SetProperty(ref field, value); } = true;
 
     [SettingInfo(Category = SettingsCategory.History, Name = "Keep history for (days)",
@@ -317,6 +328,58 @@ public sealed partial class BrowserSettings : ObservableObject
 
     /// <summary>Folder names (store ids) of extensions the user turned off. Not shown as a setting; edited by <see cref="ExtensionsController"/>.</summary>
     public List<string> DisabledExtensions { get; set => SetProperty(ref field, value); } = [];
+    #endregion
+
+    #region Assistant
+    [SettingInfo(Category = SettingsCategory.Assistant, Name = "Provider",
+        Description = "Which AI service the assistant panel talks to. New chats use this; an open chat keeps the provider it started with.")]
+    public AiProviderKind AiProvider { get; set => SetProperty(ref field, value); } = AiProviderKind.Claude;
+
+    [JsonIgnore] // lives in the Windows Credential Locker, never in Settings.json
+    [SettingInfo(Category = SettingsCategory.Assistant, Name = "Claude API key", Secret = true,
+        Description = "Create one in the Claude Console (platform.claude.com). Stored in Windows Credential Manager and shared by every instance.")]
+    public string ClaudeApiKey
+    {
+        get => AiCredentials.Get(AiProviderKind.Claude) ?? string.Empty;
+        set => AiCredentials.Set(AiProviderKind.Claude, value);
+    }
+
+    [SettingInfo(Category = SettingsCategory.Assistant, Name = "Claude model",
+        Description = "Model id, such as claude-opus-5-5 (default), claude-sonnet-5-5 (faster, cheaper) or claude-haiku-5-5 (fastest, cheapest).")]
+    public string ClaudeModel { get; set => SetProperty(ref field, value); } = ClaudeConversation.DefaultModel;
+
+    [SettingInfo(Category = SettingsCategory.Assistant, Name = "Claude effort",
+        Description = "How much Claude thinks before answering. Higher can give better answers to hard questions but is slower and uses more tokens.")]
+    public AiEffort ClaudeEffort { get; set => SetProperty(ref field, value); } = AiEffort.Medium;
+
+    [SettingInfo(Category = SettingsCategory.Assistant, Name = "OpenAI-compatible base URL",
+        Description = "The /v1 address of a server that speaks OpenAI's chat completions API: OpenAI, OpenRouter, Mistral, or a local one such as Ollama (http://localhost:11434/v1) or LM Studio (http://localhost:1234/v1).")]
+    public string OpenAiBaseUrl { get; set => SetProperty(ref field, value); } = "https://api.openai.com/v1";
+
+    [JsonIgnore] // lives in the Windows Credential Locker, never in Settings.json
+    [SettingInfo(Category = SettingsCategory.Assistant, Name = "OpenAI-compatible API key", Secret = true,
+        Description = "Leave empty for local servers that don't need one. Stored in Windows Credential Manager and shared by every instance.")]
+    public string OpenAiApiKey
+    {
+        get => AiCredentials.Get(AiProviderKind.OpenAiCompatible) ?? string.Empty;
+        set => AiCredentials.Set(AiProviderKind.OpenAiCompatible, value);
+    }
+
+    [SettingInfo(Category = SettingsCategory.Assistant, Name = "OpenAI-compatible model",
+        Description = "The model name exactly as the server lists it.")]
+    public string OpenAiModel { get; set => SetProperty(ref field, value); } = string.Empty;
+
+    [SettingInfo(Category = SettingsCategory.Assistant, Name = "Permissions",
+        Description = "What the assistant may do without asking. Read-only: reads tabs and pages on its own, asks before every action. Ask: asks before everything. Brave: never asks, except to run scripts. Custom: per tool, set below. The lightbulb in the chat panel changes it for one chat.")]
+    public AiPermissionMode AiPermissionMode { get; set => SetProperty(ref field, value); } = AiPermissionMode.ReadOnly;
+
+    /// <summary>Per-tool choices for <see cref="AiPermissionMode.Custom"/>, by tool name. Edited by <see cref="AiToolPermissionsController"/>; replace the dictionary to save.</summary>
+    public Dictionary<string, AiToolPermission> AiToolPermissions { get; set => SetProperty(ref field, value); } = [];
+
+    [JsonIgnore]
+    [SettingInfo(Category = SettingsCategory.Assistant, Name = "Custom permissions",
+        Description = "Used when Permissions is set to Custom (in settings or for a chat). Tools not changed here behave like Read-only.")]
+    public AiToolPermissionsController? AiToolPermissionsEditor;
     #endregion
 
     #region WebView2
@@ -363,7 +426,6 @@ public sealed partial class BrowserSettings : ObservableObject
      * Simple:
      * - performance for webview2
      * - performance for my UI
-     * - ai assistant settings
      * - default zoom
      * - startup mode: none, restore, config
      * - restore browser on close?

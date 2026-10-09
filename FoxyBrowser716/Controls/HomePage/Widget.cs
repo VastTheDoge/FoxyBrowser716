@@ -3,6 +3,8 @@ using System.Runtime.CompilerServices;
 using FoxyBrowser716.DataManagement;
 using FoxyBrowser716.DataObjects.Settings;
 using Material.Icons;
+using Material.Icons.WinUI3;
+using Microsoft.UI.Dispatching;
 
 namespace FoxyBrowser716.Controls.HomePage;
 
@@ -76,62 +78,113 @@ public abstract class WidgetBase : UserControl
     
     protected abstract Task Initialize();
     
+    /// <summary>Current value of every <see cref="Setting{T}"/> in <see cref="WidgetSettings"/>, keyed by name (what gets saved).</summary>
     public Dictionary<string, object> GetSettingsMap()
     {
         var settingsMap = new Dictionary<string, object>();
-        
+
         foreach (var setting in WidgetSettings)
         {
-            var settingType = setting.GetType();
-        
-            if (settingType.IsGenericType && settingType.GetGenericTypeDefinition() == typeof(Setting<>))
-            {
-                var nameProperty = settingType.GetProperty("Name");
-                var valueProperty = settingType.GetProperty("Value");
-            
-                if (nameProperty != null && valueProperty != null)
-                {
-                    var settingName = nameProperty.GetValue(setting) as string;
-                    var settingValue = valueProperty.GetValue(setting);
-                
-                    if (settingName != null && settingValue != null)
-                    {
-                        settingsMap[settingName] = settingValue;
-                    }
-                }
-            }
+            if (GetSettingValueType(setting.GetType()) is null) continue;
+            if (setting.GetType().GetProperty("Value")?.GetValue(setting) is { } value)
+                settingsMap[setting.Name] = value;
         }
-    
+
         return settingsMap;
     }
-    
-    private static void SetSetting(ISetting rawSetting, Dictionary<string,object>? settingsMap)
+
+    /// <summary>The <c>T</c> of the <see cref="Setting{T}"/> a concrete setting (e.g. <see cref="BoolSetting"/>) derives from.</summary>
+    private static Type? GetSettingValueType(Type settingType)
     {
-        if (settingsMap is null) return;
-        var settingType = rawSetting.GetType();
-        if (!settingType.IsGenericType || settingType.GetGenericTypeDefinition() != typeof(Setting<>)) return;
-        var valueType = settingType.GetGenericArguments()[0];
-        var nameProperty = settingType.GetProperty("Name");
-        var valueProperty = settingType.GetProperty("Value");
-        if (nameProperty is null || valueProperty is null) return;
-        if (nameProperty.GetValue(rawSetting) is not string settingName || !settingsMap.TryGetValue(settingName, out var rawValue)) return;
-        if (rawValue is not null && valueType.IsInstanceOfType(rawValue))
+        for (var t = settingType; t is not null; t = t.BaseType)
+            if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(Setting<>))
+                return t.GetGenericArguments()[0];
+        return null;
+    }
+
+    private static void SetSetting(ISetting setting, Dictionary<string, object>? settingsMap)
+    {
+        if (settingsMap is null || !settingsMap.TryGetValue(setting.Name, out var rawValue)) return;
+        if (GetSettingValueType(setting.GetType()) is not { } valueType) return;
+        if (setting.GetType().GetProperty("Value") is not { } valueProperty) return;
+
+        try
         {
-            valueProperty.SetValue(rawSetting, rawValue);
-        }
-        else if (rawValue is null && !valueType.IsValueType)
-        {
-            valueProperty.SetValue(rawSetting, null);
-        }
-        else if (rawValue is not null)
-        {
-            try
+            var value = rawValue switch
             {
-                var convertedValue = Convert.ChangeType(rawValue, valueType);
-                valueProperty.SetValue(rawSetting, convertedValue);
-            }
-            catch { /*ignored*/ }
+                null => null,
+                // values loaded from json arrive as JsonElement, never as the setting's own type
+                JsonElement json => json.Deserialize(valueType, FoxyFileManager.FoxyJsonSerializerOptions),
+                _ when valueType.IsInstanceOfType(rawValue) => rawValue,
+                _ => Convert.ChangeType(rawValue, valueType),
+            };
+            if (value is null && valueType.IsValueType) return;
+            valueProperty.SetValue(setting, value);
         }
+        catch { /* a stale or mistyped saved value just keeps the default */ }
+    }
+
+    /// <summary>
+    /// Raised when the widget wants its settings written to disk outside edit mode (e.g. a note was typed).
+    /// Ignored while editing — the edit-mode Save/Exit options decide what is kept.
+    /// </summary>
+    internal event Action<WidgetBase>? SaveRequested;
+    protected void RequestSave() => SaveRequested?.Invoke(this);
+
+    /// <summary>Opens <paramref name="urlOrSearch"/> in a new tab and switches to it.</summary>
+    protected void OpenInNewTab(string urlOrSearch) => TabManager.SwapActiveTabTo(TabManager.AddTab(urlOrSearch));
+
+    /// <summary>
+    /// UI-thread timer that ticks once immediately and then every <paramref name="interval"/>, but only while the
+    /// widget is in the visual tree, so removed or reloaded widgets stop ticking.
+    /// </summary>
+    protected DispatcherQueueTimer CreateLiveTimer(TimeSpan interval, Action tick)
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = interval;
+        timer.Tick += (_, _) => tick();
+        Loaded += (_, _) => { tick(); timer.Start(); };
+        Unloaded += (_, _) => timer.Stop();
+        return timer;
+    }
+
+    /// <summary>Standard widget card look: translucent background, subtle border.</summary>
+    protected void ApplyCardTheme(Border card)
+    {
+        card.Background = new SolidColorBrush(CurrentTheme.PrimaryBackgroundColorVeryTransparent);
+        card.BorderBrush = new SolidColorBrush(CurrentTheme.SecondaryBackgroundColorSlightTransparent);
+    }
+
+    /// <summary>
+    /// <paramref name="size"/>-square favicon that falls back to a globe icon when the url is empty or fails to load.
+    /// </summary>
+    protected static FrameworkElement CreateFavicon(string? iconUrl, double size, Brush fallbackBrush)
+    {
+        var fallback = new MaterialIcon { Kind = MaterialIconKind.Web, Foreground = fallbackBrush, Width = size, Height = size };
+        if (string.IsNullOrWhiteSpace(iconUrl) || !Uri.TryCreate(iconUrl, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https" or "ms-appx"))
+            return fallback;
+
+        var image = new Image
+        {
+            Width = size, Height = size, Stretch = Stretch.Uniform,
+            Source = uri.AbsolutePath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase) ? new SvgImageSource(uri) : new BitmapImage(uri),
+        };
+        fallback.Visibility = Visibility.Collapsed;
+        image.ImageFailed += (_, _) =>
+        {
+            image.Visibility = Visibility.Collapsed;
+            fallback.Visibility = Visibility.Visible;
+        };
+        return new Grid { Width = size, Height = size, Children = { fallback, image } };
+    }
+
+    /// <summary>Adds https:// when the user typed a bare domain; returns null for anything unusable.</summary>
+    protected static Uri? NormalizeUrl(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        text = text.Trim();
+        if (Uri.TryCreate(text, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https") return uri;
+        return Uri.TryCreate("https://" + text, UriKind.Absolute, out uri) ? uri : null;
     }
 }
 

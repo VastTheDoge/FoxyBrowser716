@@ -17,28 +17,37 @@
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        
+
         <TextBlock Grid.Row="0" Grid.Column="0" x:Name="TitleText" Height="26" Text="Chat: Loading" VerticalAlignment="Center" HorizontalTextAlignment="Center" FontSize="20" FontWeight="700"/>
         <generic:FIconButton Grid.Row="0" Grid.Column="1" Height="26" Width="26" x:Name="ButtonHistory" CornerRadius="5" Content="{material:MaterialIconExt Kind=History}" OnClick="ButtonHistory_OnClick"/>
         <generic:FIconButton Grid.Row="0" Grid.Column="2" Height="26" Width="26" x:Name="ButtonClose" CornerRadius="5" Content="{material:MaterialIconExt Kind=ArrowCollapseRight}" OnClick="ButtonClose_OnClick"/>
 
-        <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" x:Name="MText" Text="warning text here." Visibility="Collapsed" HorizontalTextAlignment="Center" TextAlignment="Center"/>
-        <ScrollViewer Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+        <!-- model, tokens used and estimated cost of the open chat (hover for details) -->
+        <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="5,0,5,4">
+            <TextBlock x:Name="UsageText" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            <TextBlock x:Name="BillingText" FontSize="12" VerticalAlignment="Center">
+                <Hyperlink x:Name="BillingLink" UnderlineStyle="None" Click="BillingLink_OnClick">Credits</Hyperlink>
+            </TextBlock>
+        </StackPanel>
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" x:Name="MText" Text="Ask anything, or ask me to open or navigate your tabs." Visibility="Collapsed" HorizontalTextAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="10"/>
+        <ScrollViewer Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
                       x:Name="Scroller"
-                      VerticalScrollBarVisibility="Hidden" 
+                      VerticalScrollBarVisibility="Hidden"
                       HorizontalScrollBarVisibility="Disabled"
                       HorizontalAlignment="Stretch"
                       ZoomMode="Disabled">
             <StackPanel  x:Name="MessageList"/>
         </ScrollViewer>
 
-        <generic:FTextInput Grid.Row="2" Grid.Column="0" x:Name="Input" Height="26" MaxHeight="26" EnterPressed="Input_OnEnterPressed"/>
-        <generic:FIconButton Grid.Row="2" Grid.Column="1" Width="26" Height="26" x:Name="ButtonBraveMode" Content="{material:MaterialIconExt Kind=LightbulbAlert}" OnClick="ButtonBraveMode_OnClick"/>
-        <generic:FIconButton Grid.Row="2" Grid.Column="2" Width="26" Height="26"  x:Name="ButtonSend" Content="{material:MaterialIconExt Kind=Send}" OnClick="ButtonSend_OnClick"/>
-        
-        <generic:FTextButton Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Height="26" CornerRadius="5" x:Name="ButtonNewChat" Icon="{material:MaterialIconExt Kind=Plus}" ButtonText="New Chat" OnClick="ButtonNewChat_OnClick" Visibility="Collapsed"/>
+        <generic:FTextInput Grid.Row="3" Grid.Column="0" x:Name="Input" Height="26" MaxHeight="26" AcceptsReturn="False" PlaceHolderText="Ask anything" EnterPressed="Input_OnEnterPressed"/>
+        <generic:FIconButton Grid.Row="3" Grid.Column="1" Width="26" Height="26" x:Name="ButtonBraveMode" Content="{material:MaterialIconExt Kind=LightbulbAlert}" OnClick="ButtonBraveMode_OnClick"/>
+        <generic:FIconButton Grid.Row="3" Grid.Column="2" Width="26" Height="26"  x:Name="ButtonSend" Content="{material:MaterialIconExt Kind=Send}" OnClick="ButtonSend_OnClick"/>
+
+        <generic:FTextButton Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" Height="26" CornerRadius="5" x:Name="ButtonNewChat" Icon="{material:MaterialIconExt Kind=Plus}" ButtonText="New Chat" OnClick="ButtonNewChat_OnClick" Visibility="Collapsed"/>
     </Grid>
 </UserControl>

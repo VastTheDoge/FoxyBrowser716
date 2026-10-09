@@ -36,7 +36,9 @@ public static class SettingsHelper
 				return new DecimalSettingControl(decimalSetting);
 			case StringSetting stringSetting:
 				return new StringSettingControl(stringSetting);
-			
+			case SecretSetting secretSetting:
+				return new SecretSettingControl(secretSetting);
+
 			case ComboSetting comboSetting:
 				return new ComboSettingControl(comboSetting);
 			case ColorSetting colorSetting:
@@ -416,6 +418,36 @@ public class StringSettingControl : BaseSettingControl
 		base.ApplyTheme();
 		
 		textBox.CurrentTheme = CurrentTheme;
+	}
+}
+
+public class SecretSettingControl : BaseSettingControl
+{
+	private readonly PasswordBox passwordBox;
+
+	public SecretSettingControl(SecretSetting secretSetting) : base(secretSetting.Name, secretSetting.Description, DefaultThemes.DarkMode)
+	{
+		passwordBox = new PasswordBox
+		{
+			MinWidth = 200,
+			Password = secretSetting.Value,
+			PlaceholderText = "Not set",
+			CornerRadius = new CornerRadius(5),
+			BorderThickness = new Thickness(2),
+			Padding = new Thickness(10, 2, 10, 2),
+			MinHeight = 28,
+		};
+
+		passwordBox.PasswordChanged += (_, _) => secretSetting.Value = passwordBox.Password;
+
+		AddControlToRight(passwordBox);
+		ApplyTheme();
+	}
+
+	protected override void ApplyTheme()
+	{
+		base.ApplyTheme();
+		if (passwordBox is not null) FoxyBrowser716.Controls.WebUi.WebUiStyle.ThemePasswordBox(passwordBox, CurrentTheme);
 	}
 }
 

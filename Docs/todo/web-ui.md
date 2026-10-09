@@ -16,12 +16,10 @@ Architecture: `Docs/architecture/web-ui.md`.
       tab's alert waiting until you switch to it.
 - [ ] HTTP basic auth prompt (e.g. https://httpbin.org/basic-auth/user/pass).
 - [ ] Downloads: pause/resume/cancel, "ask where to save", "show in folder", list survives restart.
-- [ ] Private window: InPrivate session works, nothing in History, not restored after restart.
-- [ ] Instance "Private browsing" setting: new windows of that instance open private; restart with only
-      private windows open still opens a window.
+- [ ] Instance "Private browsing" setting: after a restart that instance's tabs are InPrivate (signed out,
+      site data gone after closing); other instances are unaffected.
 - [ ] Extensions: on/off survives restart; Update on a Chrome Web Store and an Edge Add-ons extension;
       Load unpacked (also with a manifest that has comments).
-- [ ] Dragging a tab between a private and a normal window is refused (same as between instances).
 - [ ] Settings search + category buttons scroll to the right section.
 
 ## Follow-ups

@@ -21,14 +21,6 @@ namespace FoxyBrowser716.Controls.MainWindow;
 /// </summary>
 public sealed partial class MainWindow
 {
-	/// <summary>An InPrivate window: no history, session-only downloads, permission decisions are not remembered.</summary>
-	public bool IsPrivate { get; private set; }
-
-	private DownloadManager? _privateDownloads;
-
-	/// <summary>The downloads this window shows: the instance's, or a session-only list for a private window.</summary>
-	public DownloadManager Downloads => IsPrivate ? _privateDownloads ??= new DownloadManager(null) : Instance.Downloads;
-
 	private WebPromptHost? _prompts;
 	private ToastHost? _toasts;
 	private FContextMenu? _webContextMenu;
@@ -196,9 +188,6 @@ public sealed partial class MainWindow
 		{
 			var link = target.LinkUri;
 			items.Add(new FContextMenu.MenuItem(Icon(MaterialIconKind.OpenInNew), 1, "Open link in new tab", () => TabManager.AddTab(link)));
-			if (!IsPrivate)
-				items.Add(new FContextMenu.MenuItem(Icon(MaterialIconKind.Incognito), 1, "Open link in private window",
-					() => _ = Instance.CreateWindow([link], isPrivate: true)));
 		}
 
 		if (target.HasSelection && !string.IsNullOrWhiteSpace(target.SelectionText))
@@ -299,8 +288,6 @@ public sealed partial class MainWindow
 		{
 			// answer the page first; remembering is a separate, optional step
 			Complete(chosen == PermissionDecision.Allow ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny);
-
-			if (IsPrivate) return; // private windows use remembered choices but never add to them
 
 			switch (Instance.Settings.RememberPermissionChoices)
 			{
@@ -479,7 +466,7 @@ public sealed partial class MainWindow
 				args.ResultFilePath = path;
 			}
 
-			Downloads.Track(args.DownloadOperation, args.ResultFilePath);
+			Instance.Downloads.Track(args.DownloadOperation, args.ResultFilePath);
 			tracked = true;
 			if (Instance.Settings.ShowDownloadsOnStart)
 				ShowDownloadsPanel();
@@ -492,7 +479,7 @@ public sealed partial class MainWindow
 			{
 				try
 				{
-					Downloads.Track(args.DownloadOperation, args.ResultFilePath);
+					Instance.Downloads.Track(args.DownloadOperation, args.ResultFilePath);
 					ShowDownloadsPanel();
 				}
 				catch (Exception trackError) { FoxyLogger.AddError(trackError); }
@@ -518,7 +505,7 @@ public sealed partial class MainWindow
 	{
 		if (_downloadsPopup is null)
 		{
-			_downloadsPanel = new DownloadsPanel(Downloads, GetDownloadFolder) { Width = 380, CurrentTheme = CurrentTheme };
+			_downloadsPanel = new DownloadsPanel(Instance.Downloads, GetDownloadFolder) { Width = 380, CurrentTheme = CurrentTheme };
 			_downloadsPopup = new Popup
 			{
 				Child = _downloadsPanel,

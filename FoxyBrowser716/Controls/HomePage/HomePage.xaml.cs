@@ -263,46 +263,28 @@ public sealed partial class HomePage : UserControl
         [
             new()
             {
-                Name = WidgetBase.GetWidgetName<ExampleWidget>(),
-                Row = 0,
-                Column = 0,
-                RowSpan = 3,
-                ColumnSpan = 3,
-                ZIndex = 10,
-            },
-            //TODO:
-            /*new()
-            {
-                Name = TitleWidget.StaticWidgetName,
-                Row = 4,
+                Name = WidgetBase.GetWidgetName<TitleWidget>(),
+                Row = 6,
                 Column = 13,
                 RowSpan = 5,
                 ColumnSpan = 14
             },
             new()
             {
-                Name = SearchWidget.StaticWidgetName,
-                Row = 8,
+                Name = WidgetBase.GetWidgetName<SearchWidget>(),
+                Row = 12,
                 Column = 10,
-                RowSpan = 1,
+                RowSpan = 2,
                 ColumnSpan = 20
             },
             new()
             {
-                Name = EditConfigWidget.StaticWidgetName,
+                Name = WidgetBase.GetWidgetName<DateTimeWidget>(),
                 Row = 1,
-                Column = 38,
-                RowSpan = 1,
-                ColumnSpan = 1
-            },
-            new()
-            {
-                Name = TimeWidget.StaticWidgetName,
-                Row = 17,
                 Column = 34,
                 RowSpan = 3,
                 ColumnSpan = 5
-            }*/
+            },
         ];
     }
 
@@ -334,6 +316,9 @@ public sealed partial class HomePage : UserControl
 
     private async Task SaveWidgetsToJson()
     {
+        foreach (var widget in Root.Children.OfType<WidgetBase>())
+            widget.LayoutData.Settings = widget.GetSettingsMap();
+        
         var path = FoxyFileManager.BuildFilePath(WidgetsFileName, FoxyFileManager.FolderType.Widgets, _mainWindow.Instance.Name);
         await FoxyFileManager.SaveToFileAsync(path, _savedWidgets);
     }
@@ -356,6 +341,9 @@ public sealed partial class HomePage : UserControl
     {
         var widget = await GetWidget(widgetData.Name, widgetData.Settings, widgetData);
         if (widget == null) return; //TODO
+        
+        widget.CurrentTheme = CurrentTheme;
+        widget.SaveRequested += WidgetSaveRequested;
         
         Grid.SetRow(widget, widgetData.Row);
         Grid.SetColumn(widget, widgetData.Column);
@@ -971,7 +959,15 @@ public sealed partial class HomePage : UserControl
     {
         if (_blockOverlayButtonEvents) return;
         
-        // throw new NotImplementedException();
+        // settings apply live through their callbacks; the edit-mode Save option persists them
+        _mainWindow.OpenSettings([new HeaderSetting($"{s.AttachedWidget.LayoutData.Name} Settings"), ..s.AttachedWidget.WidgetSettings]);
+    }
+
+    private async void WidgetSaveRequested(WidgetBase widget)
+    {
+        // while editing, writing now would also commit unsaved layout changes
+        if (InEditMode) return;
+        await SaveWidgetsToJson();
     }
 
     private void MouseDown(WidgetEditOverlay s, PointerRoutedEventArgs e)

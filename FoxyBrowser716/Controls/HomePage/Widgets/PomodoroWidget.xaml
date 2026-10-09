@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<homePage:WidgetBase
+    x:Class="FoxyBrowser716.Controls.HomePage.Widgets.PomodoroWidget"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:homePage="using:FoxyBrowser716.Controls.HomePage"
+    xmlns:generic="using:FoxyBrowser716.Controls.Generic"
+    xmlns:material="using:Material.Icons.WinUI3"
+    mc:Ignorable="d" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+    <Border x:Name="Card" Margin="4" CornerRadius="10" BorderThickness="2" Padding="8">
+        <!-- fixed 180px-wide design with a monospace clock so the Viewbox scale never jitters as digits change -->
+        <Viewbox Stretch="Uniform">
+            <StackPanel Width="180" Spacing="4">
+                <Grid>
+                    <TextBlock x:Name="ModeText" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Left" Text="Focus"/>
+                    <TextBlock x:Name="SessionText" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+                <TextBlock x:Name="TimeText" FontSize="46" FontFamily="Consolas" HorizontalAlignment="Center" Text="25:00"/>
+                <Grid Height="6" CornerRadius="3">
+                    <Rectangle x:Name="ProgressTrack"/>
+                    <Rectangle x:Name="ProgressFill" HorizontalAlignment="Left" Width="0"/>
+                </Grid>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,4,0,0">
+                    <generic:FIconButton x:Name="ButtonReset" Width="28" Height="28" Padding="4"
+                                         Content="{material:MaterialIconExt Kind=Restore}" OnClick="ButtonReset_OnClick"/>
+                    <generic:FIconButton x:Name="ButtonPlayPause" Width="34" Height="34" Padding="4"
+                                         Content="{material:MaterialIconExt Kind=Play}" OnClick="ButtonPlayPause_OnClick"/>
+                    <generic:FIconButton x:Name="ButtonSkip" Width="28" Height="28" Padding="4"
+                                         Content="{material:MaterialIconExt Kind=SkipNext}" OnClick="ButtonSkip_OnClick"/>
+                </StackPanel>
+            </StackPanel>
+        </Viewbox>
+    </Border>
+</homePage:WidgetBase>

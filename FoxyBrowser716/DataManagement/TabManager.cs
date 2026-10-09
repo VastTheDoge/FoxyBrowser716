@@ -16,9 +16,6 @@ public partial class TabManager : ObservableObject
 	/// <summary>The window these tabs live in; it hosts their themed web UI (menus, prompts, downloads).</summary>
 	public MainWindow Window { get; private set; } = null!;
 
-	/// <summary>Tabs use an InPrivate WebView2 session: nothing is written to history, downloads or permissions.</summary>
-	public bool IsPrivate { get; private set; }
-
 	[ObservableProperty] public partial ObservableCollection<WebviewTab> Tabs { get; set; } = [];
 	[ObservableProperty] public partial ObservableCollection<TabGroup> Groups { get; set; } = [];
 	
@@ -35,19 +32,18 @@ public partial class TabManager : ObservableObject
 	private TabManager()
 	{ }
 
-	public static async Task<TabManager> Create(Instance instance, MainWindow window, bool isPrivate)
+	public static async Task<TabManager> Create(Instance instance, MainWindow window)
 	{
 		var newManager = new TabManager();
-		await newManager.Initialize(instance, window, isPrivate);
+		await newManager.Initialize(instance, window);
 		return newManager;
 	}
 
-	private async Task Initialize(Instance instance, MainWindow window, bool isPrivate)
+	private async Task Initialize(Instance instance, MainWindow window)
 	{
 		Instance = instance;
 		Window = window;
-		IsPrivate = isPrivate;
-		
+
 		var options = new CoreWebView2EnvironmentOptions
 		{
 			AreBrowserExtensionsEnabled = true,
@@ -89,11 +85,11 @@ public partial class TabManager : ObservableObject
 	}
 	
 	/// <summary>
-	/// Whether tabs dragged from <paramref name="source"/> may drop into <paramref name="target"/>: same instance, and
-	/// never between a private and a normal window (the tab would be re-opened in the other profile).
+	/// Whether tabs dragged from <paramref name="source"/> may drop into <paramref name="target"/>: only within the same
+	/// instance (the tab would be re-opened in the other instance's profile).
 	/// </summary>
 	public static bool CanAcceptTabsFrom(TabManager? target, TabManager source) =>
-		target is not null && target.Instance.Name == source.Instance.Name && target.IsPrivate == source.IsPrivate;
+		target is not null && target.Instance.Name == source.Instance.Name;
 
 	public bool TryGetTab(int tabId, out WebviewTab? tab)
 	{
@@ -358,14 +354,14 @@ public partial class TabManager : ObservableObject
 	
 	public async Task CreateWindowWithGroup(TabGroup group, Rect bounds)
 	{
-		var window = await Instance.CreateWindow([], bounds, isPrivate: IsPrivate);
+		var window = await Instance.CreateWindow([], bounds);
 		window.TabManager.MoveGroupFromWindow(group, this);
 		window.Show();
 	}
 
 	public async Task CreateWindowWithTab(WebviewTab tab, Rect bounds)
 	{
-		var window = await Instance.CreateWindow([], bounds, isPrivate: IsPrivate);
+		var window = await Instance.CreateWindow([], bounds);
 		window.TabManager.MoveTabFromWindow(tab, this, 0);
 		window.Show();
 	}

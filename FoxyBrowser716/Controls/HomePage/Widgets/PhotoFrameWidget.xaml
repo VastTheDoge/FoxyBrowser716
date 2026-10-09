@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<homePage:WidgetBase
+    x:Class="FoxyBrowser716.Controls.HomePage.Widgets.PhotoFrameWidget"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:homePage="using:FoxyBrowser716.Controls.HomePage"
+    xmlns:material="using:Material.Icons.WinUI3"
+    mc:Ignorable="d" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+    <Border x:Name="Card" Margin="4" CornerRadius="10" BorderThickness="2">
+        <Grid>
+            <!-- pictures are ImageBrush backgrounds so the rounded corners clip them at any size; there are two layers so
+                 the next picture loads hidden and cross-fades in instead of flashing an empty frame (brushes are set in code) -->
+            <Border x:Name="LayerA" CornerRadius="8" Opacity="0"/>
+            <Border x:Name="LayerB" CornerRadius="8" Opacity="0"/>
+            <Viewbox x:Name="StatusView" Canvas.ZIndex="2" Stretch="Uniform" MaxHeight="90" Margin="10">
+                <StackPanel Width="170" Spacing="6">
+                    <material:MaterialIcon x:Name="StatusIcon" Kind="ImageOutline" Width="30" Height="30" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="StatusText" FontSize="13" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Viewbox>
+        </Grid>
+    </Border>
+</homePage:WidgetBase>

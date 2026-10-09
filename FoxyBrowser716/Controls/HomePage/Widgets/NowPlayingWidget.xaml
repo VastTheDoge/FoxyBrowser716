@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<homePage:WidgetBase
+    x:Class="FoxyBrowser716.Controls.HomePage.Widgets.NowPlayingWidget"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:homePage="using:FoxyBrowser716.Controls.HomePage"
+    xmlns:generic="using:FoxyBrowser716.Controls.Generic"
+    xmlns:material="using:Material.Icons.WinUI3"
+    mc:Ignorable="d" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+    <Border x:Name="Card" Margin="4" CornerRadius="10" BorderThickness="2" Padding="8">
+        <!-- fixed 288x92 design with fixed columns and trimmed text, so track changes never rescale the Viewbox -->
+        <Viewbox Stretch="Uniform">
+            <Grid Width="288" Height="92" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="92"/>
+                    <ColumnDefinition Width="186"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- album art is the border's ImageBrush background so it gets the rounded corners -->
+                <Border x:Name="ArtBorder" Grid.Column="0" Width="92" Height="92" CornerRadius="8">
+                    <material:MaterialIcon x:Name="ArtIcon" Kind="Music" Width="40" Height="40"/>
+                </Border>
+
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="TitleText" Grid.Row="0" FontSize="15" FontWeight="SemiBold" Text="Nothing playing"
+                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="ArtistText" Grid.Row="1" FontSize="12"
+                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="SourceText" Grid.Row="2" FontSize="10.5" Margin="0,1,0,0"
+                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+
+                    <Grid x:Name="TimelineBar" Grid.Row="4" Height="4" CornerRadius="2" Margin="0,0,0,2" Visibility="Collapsed">
+                        <Rectangle x:Name="ProgressTrack"/>
+                        <Rectangle x:Name="ProgressFill" HorizontalAlignment="Left" Width="0"/>
+                    </Grid>
+
+                    <!-- fixed-width time columns keep the buttons centred whether or not times are shown -->
+                    <Grid Grid.Row="5" Height="30">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="42"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="42"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="ElapsedText" Grid.Column="0" FontSize="10" FontFamily="Consolas"
+                                   VerticalAlignment="Center" Visibility="Collapsed"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                            <generic:FIconButton x:Name="ButtonPrevious" Width="24" Height="24" Padding="3" VerticalAlignment="Center"
+                                                 Content="{material:MaterialIconExt Kind=SkipPrevious}" OnClick="ButtonPrevious_OnClick"/>
+                            <generic:FIconButton x:Name="ButtonPlayPause" Width="28" Height="28" Padding="3" VerticalAlignment="Center"
+                                                 Content="{material:MaterialIconExt Kind=Play}" OnClick="ButtonPlayPause_OnClick"/>
+                            <generic:FIconButton x:Name="ButtonNext" Width="24" Height="24" Padding="3" VerticalAlignment="Center"
+                                                 Content="{material:MaterialIconExt Kind=SkipNext}" OnClick="ButtonNext_OnClick"/>
+                        </StackPanel>
+                        <TextBlock x:Name="DurationText" Grid.Column="2" FontSize="10" FontFamily="Consolas"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed"/>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Viewbox>
+    </Border>
+</homePage:WidgetBase>

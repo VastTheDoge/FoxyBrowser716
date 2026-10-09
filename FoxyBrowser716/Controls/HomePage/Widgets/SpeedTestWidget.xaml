@@ -6,19 +6,70 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:homePage="using:FoxyBrowser716.Controls.HomePage"
-    mc:Ignorable="d" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="5">
-    <Viewbox x:Name="RootView" Margin="5" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-        <StackPanel x:Name="RootGrid" Background="DimGray" CornerRadius="10" BorderThickness="2" Padding="4">
-            <TextBlock x:Name="OverallBlock"
-                       HorizontalAlignment="Left"
-                       VerticalAlignment="Center"
-                       Text="" 
-                       FontSize="18"/>
-            <TextBlock x:Name="DetailsBlock"
-                       HorizontalAlignment="Left"
-                       VerticalAlignment="Center"
-                       Text="" 
-                       FontSize="10"/>
-        </StackPanel>
-    </Viewbox>
+    xmlns:generic="using:FoxyBrowser716.Controls.Generic"
+    xmlns:material="using:Material.Icons.WinUI3"
+    mc:Ignorable="d" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+    <Border x:Name="Card" Margin="4" CornerRadius="10" BorderThickness="2" Padding="8">
+        <!-- fixed 240px-wide design with monospace numbers so the Viewbox scale never jitters as values change -->
+        <Viewbox Stretch="Uniform">
+            <StackPanel Width="240" Spacing="6">
+                <Grid Height="26">
+                    <TextBlock x:Name="HeaderText" Text="Internet" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <generic:FIconButton x:Name="ButtonTest" Width="26" Height="26" Padding="3" HorizontalAlignment="Right"
+                                         Content="{material:MaterialIconExt Kind=Speedometer}" OnClick="ButtonTest_OnClick"/>
+                </Grid>
+
+                <!-- live throughput of this PC's network adapters -->
+                <StackPanel x:Name="LivePanel" Spacing="4">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+                            <material:MaterialIcon x:Name="DownIcon" Kind="ArrowDownBold" Width="16" Height="16"/>
+                            <TextBlock x:Name="LiveDownText" FontSize="16" FontFamily="Consolas" Text="--"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                            <material:MaterialIcon x:Name="UpIcon" Kind="ArrowUpBold" Width="16" Height="16"/>
+                            <TextBlock x:Name="LiveUpText" FontSize="16" FontFamily="Consolas" Text="--"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid x:Name="GraphHost" Height="56" CornerRadius="4">
+                        <Canvas Width="240" Height="56">
+                            <Polyline x:Name="DownLine" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+                            <Polyline x:Name="UpLine" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+                        </Canvas>
+                        <TextBlock x:Name="ScaleText" FontSize="9" FontFamily="Consolas" Margin="4,2"
+                                   HorizontalAlignment="Right" VerticalAlignment="Top"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- on-demand speed test against Cloudflare's public speed test endpoints -->
+                <StackPanel x:Name="TestPanel" Spacing="2">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock x:Name="TestDownText" FontSize="17" FontFamily="Consolas" HorizontalAlignment="Center" Text="--"/>
+                            <TextBlock x:Name="TestDownLabel" FontSize="10" HorizontalAlignment="Center" Text="Download"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock x:Name="TestUpText" FontSize="17" FontFamily="Consolas" HorizontalAlignment="Center" Text="--"/>
+                            <TextBlock x:Name="TestUpLabel" FontSize="10" HorizontalAlignment="Center" Text="Upload"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock x:Name="TestPingText" FontSize="17" FontFamily="Consolas" HorizontalAlignment="Center" Text="--"/>
+                            <TextBlock x:Name="TestPingLabel" FontSize="10" HorizontalAlignment="Center" Text="Ping (ms)"/>
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="StatusText" FontSize="10" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               MaxWidth="236" Text="Press the speedometer to run a speed test"/>
+                </StackPanel>
+            </StackPanel>
+        </Viewbox>
+    </Border>
 </homePage:WidgetBase>

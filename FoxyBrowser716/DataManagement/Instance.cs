@@ -58,6 +58,12 @@ public partial class Instance : ObservableObject
 	
 	public bool IsPrimaryInstance => Name == AppServer.PrimaryInstance.Name;
 
+	/// <summary>
+	/// Every tab of this instance runs InPrivate (<see cref="BrowserSettings.PrivateBrowsing"/>, read once at startup so
+	/// all of the instance's windows share one mode).
+	/// </summary>
+	public bool IsPrivate { get; private set; }
+
 	public LinkedList<MainWindow> Windows = [];
 	public MainWindow? CurrentWindow => Windows.FirstOrDefault();
 	
@@ -124,9 +130,10 @@ public partial class Instance : ObservableObject
 			PinnedExtensionsList,
 			History.SaverItem,
 			SitePermissions.SaverItem,
-			Downloads.SaverItem!,
+			Downloads.SaverItem,
 		]);
 
+		IsPrivate = Settings.PrivateBrowsing;
 		History.Initialize(Settings.HistoryRetentionDays);
 		Downloads.Initialize();
 
@@ -136,12 +143,11 @@ public partial class Instance : ObservableObject
 		if (DefaultThemeObject.Themes.TryGetValue(Settings.ThemeName, out var theme)) CurrentTheme = theme;
 	}
 	
-	public async Task<MainWindow> CreateWindow(string[]? urls = null, Rect? startLocation = null, MainWindow.BrowserWindowState windowState = MainWindow.BrowserWindowState.Normal, bool isPrivate = false)
+	public async Task<MainWindow> CreateWindow(string[]? urls = null, Rect? startLocation = null, MainWindow.BrowserWindowState windowState = MainWindow.BrowserWindowState.Normal)
 	{
 		try
 		{
-			// an instance set to private browsing only ever opens private windows
-			var newWindow = await MainWindow.Create(this, isPrivate || Settings.PrivateBrowsing);
+			var newWindow = await MainWindow.Create(this);
 
 			Focused?.Invoke(this);
 

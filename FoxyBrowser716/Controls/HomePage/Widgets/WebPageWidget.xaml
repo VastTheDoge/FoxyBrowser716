@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<homePage:WidgetBase
+    x:Class="FoxyBrowser716.Controls.HomePage.Widgets.WebPageWidget"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:homePage="using:FoxyBrowser716.Controls.HomePage"
+    xmlns:generic="using:FoxyBrowser716.Controls.Generic"
+    xmlns:material="using:Material.Icons.WinUI3"
+    mc:Ignorable="d" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+    <!-- no Viewbox: the page itself reflows to whatever size the widget is; Zoom (a setting) scales its content -->
+    <Border x:Name="Card" Margin="4" CornerRadius="8" BorderThickness="2" Padding="3" SizeChanged="Card_OnSizeChanged">
+        <Grid RowSpacing="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Grid x:Name="Toolbar" Grid.Row="0" Height="22" ColumnSpacing="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <generic:FIconButton x:Name="ButtonBack" Grid.Column="0" Width="20" Height="20" Padding="2"
+                                     Content="{material:MaterialIconExt Kind=ArrowLeft}" OnClick="ButtonBack_OnClick"/>
+                <generic:FIconButton x:Name="ButtonReload" Grid.Column="1" Width="20" Height="20" Padding="2"
+                                     Content="{material:MaterialIconExt Kind=Refresh}" OnClick="ButtonReload_OnClick"/>
+                <TextBlock x:Name="TitleText" Grid.Column="2" FontSize="12" Margin="4,0" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                <generic:FIconButton x:Name="ButtonOpenInTab" Grid.Column="3" Width="20" Height="20" Padding="2"
+                                     Content="{material:MaterialIconExt Kind=OpenInNew}" OnClick="ButtonOpenInTab_OnClick"/>
+            </Grid>
+            <!-- the WebView2 is created in code so it can be closed (freeing its renderer) when the widget is removed -->
+            <Grid x:Name="WebHost" Grid.Row="1" CornerRadius="5"/>
+            <Viewbox x:Name="StatusView" Grid.Row="1" Stretch="Uniform" MaxHeight="36" Margin="8" IsHitTestVisible="False">
+                <TextBlock x:Name="StatusText" Text="Loading..."/>
+            </Viewbox>
+        </Grid>
+    </Border>
+</homePage:WidgetBase>

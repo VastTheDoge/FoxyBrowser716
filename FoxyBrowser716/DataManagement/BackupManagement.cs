@@ -12,8 +12,8 @@ public static class BackupManagement
 	{
 		var response = FoxyFileManager.ReadFromFile<AppBackupModel>(BackupPath);
 		
-		// a backup taken while only private windows were open has nothing to restore; treating it as a
-		// restore would leave the app running with no window at all
+		// a backup with no windows has nothing to restore; treating it as a restore would leave the app
+		// running with no window at all
 		return response is { code: FoxyFileManager.ReturnCode.Success, content.Windows.Length: > 0 };
 	}
 
@@ -91,8 +91,7 @@ public static class BackupManagement
 					List<WindowBackupModel> windows = [];
 					windows.AddRange(
 						from instance in AppServer.Instances 
-						from window in instance.Windows 
-						where !window.IsPrivate // private sessions must not come back after a restart
+						from window in instance.Windows
 						select new WindowBackupModel
 						{
 							InstanceName = instance.Name,

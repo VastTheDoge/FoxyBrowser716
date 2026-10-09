@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<homePage:WidgetBase
+    x:Class="FoxyBrowser716.Controls.HomePage.Widgets.StickyNoteWidget"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:homePage="using:FoxyBrowser716.Controls.HomePage"
+    mc:Ignorable="d" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+    <homePage:WidgetBase.Resources>
+        <!-- bare TextBox template (same idea as FTextInput's): no focus/hover visual states fighting our colors -->
+        <Style x:Key="NoteTextBoxStyle" TargetType="TextBox">
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Grid Background="{TemplateBinding Background}">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver"/>
+                                    <VisualState x:Name="Focused"/>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <ScrollViewer x:Name="ContentElement"
+                                          HorizontalScrollMode="Disabled"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          VerticalScrollMode="Auto"
+                                          VerticalScrollBarVisibility="Auto"
+                                          IsTabStop="False"
+                                          ZoomMode="Disabled"
+                                          Margin="{TemplateBinding Padding}"
+                                          AutomationProperties.AccessibilityView="Raw"/>
+                            <TextBlock x:Name="PlaceholderTextContentPresenter"
+                                       Text="{TemplateBinding PlaceholderText}"
+                                       Foreground="{TemplateBinding PlaceholderForeground}"
+                                       Margin="{TemplateBinding Padding}"
+                                       FontSize="{TemplateBinding FontSize}"
+                                       TextWrapping="Wrap"
+                                       IsHitTestVisible="False"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </homePage:WidgetBase.Resources>
+    <!-- no Viewbox: text wraps to the widget's width at the chosen font size and scrolls when it overflows -->
+    <Border x:Name="Card" Margin="4" CornerRadius="10" BorderThickness="2" Padding="2">
+        <TextBox x:Name="NoteBox" Style="{StaticResource NoteTextBoxStyle}" Padding="8,6"
+                 AcceptsReturn="True" TextWrapping="Wrap" IsSpellCheckEnabled="True"
+                 PlaceholderText="Write something..." TextChanged="NoteBox_OnTextChanged" LostFocus="NoteBox_OnLostFocus"/>
+    </Border>
+</homePage:WidgetBase>

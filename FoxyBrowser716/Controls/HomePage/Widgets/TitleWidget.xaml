@@ -17,7 +17,7 @@
                            Text="FoxyBrowser716" 
                            FontSize="32"/>
             </Viewbox>
-            <StackPanel Orientation="Horizontal">
+            <StackPanel x:Name="LinksPanel" Orientation="Horizontal">
                 <generic:FTextButton x:Name="ButtonWebsite" CornerRadius="5" ButtonText="Website" Icon="{material:MaterialIconExt Kind=Link}" OnClick="ButtonWebsite_OnClick"/>
                 <generic:FTextButton x:Name="ButtonGithub" CornerRadius="5" ButtonText="GitHub" Icon="{material:MaterialIconExt Kind=Link}" OnClick="ButtonGithub_OnClick"/>
             </StackPanel>

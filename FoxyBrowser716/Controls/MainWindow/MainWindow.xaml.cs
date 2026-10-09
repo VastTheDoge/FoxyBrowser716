@@ -77,10 +77,10 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
         //test.Child = new CustomWebView2(this) { HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch, MinHeight = 50, MinWidth = 50};
     }
 
-    public static async Task<MainWindow> Create(Instance instance, bool isPrivate = false)
+    public static async Task<MainWindow> Create(Instance instance)
     {
         var win = new MainWindow();
-        await win.Initialize(instance, isPrivate);
+        await win.Initialize(instance);
         return win;
     }
 
@@ -91,19 +91,12 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
         LeftBar.SetLockedState(Instance.Cache.LeftBarLocked);
     }
 
-    private async Task Initialize(Instance instance, bool isPrivate)
+    private async Task Initialize(Instance instance)
     {
         Instance = instance;
-        IsPrivate = isPrivate;
-        TabManager = await TabManager.Create(Instance, this, isPrivate);
+        TabManager = await TabManager.Create(Instance, this);
         InitializeWebUi();
 
-        if (isPrivate)
-        {
-            Title = "FoxyBrowser716 (Private)";
-            TopBar.SetPrivateMode(true);
-        }
-        
         await Task.WhenAll(LeftBar.Initialize(TabManager), HomePage.Initialize(this), ChatWindow.Initialize(this), SettingsPage.Initialize(this));
         
         // link events from tab manager
@@ -433,18 +426,14 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
 
         List<FContextMenu.MenuItem> items =
         [
-            //TODO: not stable enough.
-            //new(new MaterialIcon {Kind = MaterialIconKind.Assistant}, 1, "Chat Window", AssistantClick),
+            new(new MaterialIcon {Kind = MaterialIconKind.Assistant}, 1, "AI Assistant", AssistantClick),
             new(new MaterialIcon {Kind = MaterialIconKind.CardMultiple}, 1, "Instances", InstancesClick),
             new(new MaterialIcon {Kind = MaterialIconKind.BookmarkMultiple}, 1, "Bookmarks", BookmarkClick),
             new(new MaterialIcon {Kind = MaterialIconKind.History}, 1, "History", HistoryClick),
             new(new MaterialIcon {Kind = MaterialIconKind.Download}, 1, "Downloads", DownloadClick),
             new(new MaterialIcon {Kind = MaterialIconKind.Puzzle}, 1, "Extensions", ExtensionsClick, false),
         ];
-        // an instance set to private browsing opens nothing but private windows already
-        if (!Instance.Settings.PrivateBrowsing)
-            items.Add(new(new MaterialIcon {Kind = MaterialIconKind.Incognito}, 1, "New private window", () => _ = Instance.CreateWindow(isPrivate: true)));
-        
+
         ContextMenuPopup.Margin = new Thickness(32, 28, 0, 0);
         switch (TabManager.ActiveTabId)
         {
@@ -552,13 +541,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
             })
             .ToList();
 
-        // InPrivate tabs cannot run the profile's extensions, so listing them here would be misleading
-        if (IsPrivate)
-        {
-            items.Clear();
-            items.Add(new FContextMenu.MenuItem(new MaterialIcon { Kind = MaterialIconKind.Incognito }, 1, "Extensions are off in private windows", null) { IsEnabled = false });
-        }
-        else if (items.Count == 0)
+        if (items.Count == 0)
             items.Add(new FContextMenu.MenuItem(new MaterialIcon { Kind = MaterialIconKind.Store }, 1, "Get extensions",
                 () => TabManager.SwapActiveTabTo(TabManager.AddTab(ExtensionManager.ChromeWebStoreUrl))));
 

@@ -9,34 +9,30 @@ using Microsoft.Web.WebView2.Core;
 namespace FoxyBrowser716.DataManagement;
 
 /// <summary>
-/// The download list behind the themed downloads panel. One per instance (persisted to Downloads.json), plus a
-/// session-only one per private window. WebView2 still performs the download; this only tracks the
+/// The download list behind the themed downloads panel. One per instance (persisted to Downloads.json).
+/// WebView2 still performs the download; this only tracks the
 /// <see cref="CoreWebView2DownloadOperation"/> and exposes pause/resume/cancel/open.
 /// <see cref="Items"/> is only touched on the UI thread (WebView2 raises download events there).
 /// </summary>
 public sealed class DownloadManager
 {
-	private readonly FoxyAutoSaverLockedList<Download>? _store;
+	private readonly FoxyAutoSaverLockedList<Download> _store;
 
 	public ObservableCollection<Download> Items { get; } = [];
 
 	public event Action<Download>? DownloadStarted;
 	public event Action<Download>? DownloadCompleted;
 
-	internal IFoxyAutoSaverItem? SaverItem => _store;
+	internal IFoxyAutoSaverItem SaverItem => _store;
 
-	/// <param name="instanceName">null for a private window: nothing is written to disk.</param>
-	public DownloadManager(string? instanceName)
+	public DownloadManager(string instanceName)
 	{
-		if (instanceName is not null)
-			_store = new FoxyAutoSaverLockedList<Download>("Downloads.json", FoxyFileManager.FolderType.Data, instanceName);
+		_store = new FoxyAutoSaverLockedList<Download>("Downloads.json", FoxyFileManager.FolderType.Data, instanceName);
 	}
 
 	/// <summary>Call once the store has loaded. Downloads that were running when the browser closed cannot resume.</summary>
 	internal void Initialize()
 	{
-		if (_store is null) return;
-
 		foreach (var download in _store.Snapshot().OrderByDescending(d => d.StartedAt))
 		{
 			if (download.Status is DownloadStatus.InProgress or DownloadStatus.Paused)
@@ -241,10 +237,10 @@ public sealed class DownloadManager
 	private void OnDownloadPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
 		// progress ticks only change fields of existing items, so a save request is enough (no list copy)
-		_store?.RequestSave(null);
+		_store.RequestSave(null);
 	}
 
-	private void SyncStore() => _store?.Mutate(list =>
+	private void SyncStore() => _store.Mutate(list =>
 	{
 		list.Clear();
 		list.AddRange(Items);

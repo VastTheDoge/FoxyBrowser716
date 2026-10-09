@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<homePage:WidgetBase
+    x:Class="FoxyBrowser716.Controls.HomePage.Widgets.QuickLinkWidget"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:homePage="using:FoxyBrowser716.Controls.HomePage"
+    mc:Ignorable="d" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+    <Border x:Name="Card" Margin="4" CornerRadius="10" BorderThickness="2" Padding="6"
+            PointerEntered="Card_OnPointerEntered" PointerExited="Card_OnPointerExited" Tapped="Card_OnTapped">
+        <!-- fixed 120px-wide design: icon on top, title under it; the Viewbox scales the pair as one -->
+        <Viewbox Stretch="Uniform">
+            <StackPanel Width="120" Spacing="6">
+                <Border x:Name="IconHost" Width="64" Height="64" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="TitleText" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"
+                           TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="116"/>
+            </StackPanel>
+        </Viewbox>
+    </Border>
+</homePage:WidgetBase>

@@ -67,9 +67,9 @@ public partial class WebviewTab : ObservableObject
 
 	private async Task CoreWebView2Initialization()
 	{
-		if (TabManager.IsPrivate)
+		if (TabManager.Instance.IsPrivate)
 		{
-			// InPrivate: an off-the-record profile shared by all private tabs, discarded when they all close
+			// InPrivate: an off-the-record profile shared by the instance's tabs, discarded when they all close
 			var options = TabManager.WebsiteEnvironment!.CreateCoreWebView2ControllerOptions();
 			options.IsInPrivateModeEnabled = true;
 			await Core.EnsureCoreWebView2Async(TabManager.WebsiteEnvironment, options);
@@ -90,10 +90,7 @@ public partial class WebviewTab : ObservableObject
 		
 		//await TabManager.Instance.InjectStoreButtonInterceptor(Core);
 
-		// extensions live in the normal profile; the InPrivate profile cannot load them
-		var extensionSetupTask = TabManager.IsPrivate
-			? Task.CompletedTask
-			: TabManager.Instance.SetupExtensionSupport(Core);
+		var extensionSetupTask = TabManager.Instance.SetupExtensionSupport(Core);
 		
 		// Core.AllowExternalDrop = true;
 		Core.AllowDrop = true;
@@ -256,7 +253,7 @@ public partial class WebviewTab : ObservableObject
 			RecordHistory();
 	}
 
-	private bool ShouldRecordHistory => !TabManager.IsPrivate && TabManager.Instance.Settings.SaveHistory;
+	private bool ShouldRecordHistory => TabManager.Instance.Settings.SaveHistory;
 
 	private void RecordHistory()
 	{

@@ -201,8 +201,7 @@ public static class AppServer
 					try
 					{
 						if (uris.Length > 0)
-							// links opened from other apps never go into a private window
-							if (CurrentInstance.Windows.FirstOrDefault(w => !w.IsPrivate) is { } window)
+							if (CurrentInstance.CurrentWindow is { } window)
 								foreach (var uri in uris)
 									window.TabManager.SwapActiveTabTo(window.TabManager.AddTab(uri));
 							else

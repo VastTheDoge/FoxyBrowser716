@@ -87,8 +87,8 @@ public sealed partial class WidgetEditOverlay : UserControl
 
     private bool OverButtons()
     {
-        return ButtonIconRemove.PointerOver || ButtonIconRemove.PointerOver ||
-               ButtonTextRemove.PointerOver || ButtonTextRemove.PointerOver;
+        return ButtonIconSettings.PointerOver || ButtonIconRemove.PointerOver ||
+               ButtonTextSettings.PointerOver || ButtonTextRemove.PointerOver;
     }
 
     private void Root_OnPointerReleased(object sender, PointerRoutedEventArgs e)

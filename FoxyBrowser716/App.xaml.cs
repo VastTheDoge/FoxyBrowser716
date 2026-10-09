@@ -26,6 +26,13 @@ public partial class App : Application
             "FoxyBrowser716-Prod";
 #endif
 
+    /// <summary>
+    /// Set by an unpackaged <see cref="RequestRestartAfterClose"/> to the old process id, so the new process can
+    /// wait for it to exit (and not restart again if startup fails a second time).
+    /// </summary>
+    private const string RestartedFromEnvVar = "FOXYBROWSER716_RESTARTED_FROM";
+    private static bool _isRestart;
+
     public App()
     {
         InitializeComponent();
@@ -42,39 +49,54 @@ public partial class App : Application
             
         try
         {
+            if (!AppEnvironment.IsPackaged)
+                WaitForRestartedProcess();
+
             // performance optimizations:
             // compiles JIT code for the startup profile which is reused after the first launch
-            var profileRoot = Windows.Storage.ApplicationData.Current.LocalFolder.Path;
+            var profileRoot = AppEnvironment.IsPackaged
+                ? Windows.Storage.ApplicationData.Current.LocalFolder.Path
+                : Directory.CreateDirectory(FoxyFileManager.BuildFolderPath(FoxyFileManager.FolderType.Cache)).FullName;
             ProfileOptimization.SetProfileRoot(profileRoot);
             ProfileOptimization.StartProfile("Startup.profile");
-            
+
 #if DEBUG
             this.DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
 #endif
 
-            // Get the current app instance
-            var currentInstance = AppInstance.GetCurrent();
-        
-            // Check if this is the first instance
-            var mainInstance = AppInstance.FindOrRegisterForKey(AppKey);
-            
-            if (!mainInstance.IsCurrent)
+            AppInstance? currentInstance;
+            try
             {
-                var activationArgs = currentInstance.GetActivatedEventArgs();
-                try
-                {
-                    await mainInstance.RedirectActivationToAsync(activationArgs).AsTask();
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"RedirectActivationToAsync failed: {ex}"); 
-                    FoxyLogger.AddError(ex);
-                }
+                // Get the current app instance
+                currentInstance = AppInstance.GetCurrent();
 
-                Environment.Exit(0);
-                return;
+                // Check if this is the first instance
+                var mainInstance = AppInstance.FindOrRegisterForKey(AppKey);
+
+                if (!mainInstance.IsCurrent)
+                {
+                    var activationArgs = currentInstance.GetActivatedEventArgs();
+                    try
+                    {
+                        await mainInstance.RedirectActivationToAsync(activationArgs).AsTask();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"RedirectActivationToAsync failed: {ex}");
+                        FoxyLogger.AddError(ex);
+                    }
+
+                    Environment.Exit(0);
+                    return;
+                }
             }
-        
+            catch (Exception ex) when (!AppEnvironment.IsPackaged)
+            {
+                // AppLifecycle may not work unpackaged (e.g. under Wine): run without single-instance redirection
+                FoxyLogger.AddError(ex);
+                currentInstance = null;
+            }
+
             FoxyLogger.LoadLog();
             
             this.UnhandledException += OnUnhandledException;
@@ -84,7 +106,8 @@ public partial class App : Application
             
             // performance optimizations:
             Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
-            CoreApplication.EnablePrelaunch(true);
+            if (AppEnvironment.IsPackaged)
+                CoreApplication.EnablePrelaunch(true);
             _ = Task.Run(() =>
             {
                 try
@@ -98,12 +121,17 @@ public partial class App : Application
             
             // note that webview2 has its own similar optimizations in WebviewTab.cs.
 
-            // This is the main instance, set up activation handling
-            currentInstance.Activated += OnActivated;
-            
-            var e = currentInstance.GetActivatedEventArgs();
-            
-            await HandleActivationArgs(e, true);
+            if (currentInstance is not null)
+            {
+                // This is the main instance, set up activation handling
+                currentInstance.Activated += OnActivated;
+
+                var e = currentInstance.GetActivatedEventArgs();
+
+                await HandleActivationArgs(e, true);
+            }
+            else
+                await AppServer.HandleLaunchEvent(Environment.GetCommandLineArgs()[1..], true);
         }
         catch (Exception e)
         {
@@ -167,13 +195,11 @@ public partial class App : Application
             case ExtendedActivationKind.Launch:
                 if (args.Data is ILaunchActivatedEventArgs launchArgs)
                 {
-                    var arguments = launchArgs.Arguments;
-                    await AppServer.HandleLaunchEvent(
-                        arguments?
-                            .Split(" ")
-                            .Where(s => !string.IsNullOrWhiteSpace(s))
-                            .ToArray() ?? [], isFirst
-                        );
+                    var arguments = SplitArguments(launchArgs.Arguments);
+                    // unpackaged launches pass the whole command line, exe path included
+                    if (arguments.Length > 0 && IsOwnExecutable(arguments[0]))
+                        arguments = arguments[1..];
+                    await AppServer.HandleLaunchEvent(arguments, isFirst);
                 }
                 break;
             case ExtendedActivationKind.Protocol:
@@ -193,17 +219,68 @@ public partial class App : Application
             case ExtendedActivationKind.CommandLineLaunch:
                 if (args.Data is ICommandLineActivatedEventArgs commandArgs)
                 {
-                    var arguments = commandArgs.Operation.Arguments;
                     await AppServer.HandleLaunchEvent(
-                        arguments?
-                            .Split(" ")
+                        SplitArguments(commandArgs.Operation.Arguments)
                             .Skip(1 /*command name, such as FoxyBrowser716.exe or FoxyBrowser716*/)
-                            .Where(s => !string.IsNullOrWhiteSpace(s))
-                            .ToArray() ?? [], isFirst
+                            .ToArray(), isFirst
                         );
                 }
                 break;
         }
+    }
+
+    /// <summary>
+    /// Splits a command line on whitespace, keeping quoted parts (paths with spaces) together.
+    /// </summary>
+    private static string[] SplitArguments(string? commandLine)
+    {
+        List<string> args = [];
+        var current = new StringBuilder();
+        var inQuotes = false;
+
+        foreach (var c in commandLine ?? "")
+        {
+            if (c == '"')
+                inQuotes = !inQuotes;
+            else if (char.IsWhiteSpace(c) && !inQuotes)
+            {
+                if (current.Length > 0)
+                    args.Add(current.ToString());
+                current.Clear();
+            }
+            else
+                current.Append(c);
+        }
+
+        if (current.Length > 0)
+            args.Add(current.ToString());
+
+        return args.ToArray();
+    }
+
+    private static bool IsOwnExecutable(string arg) =>
+        !arg.Contains("://")
+        && string.Equals(Path.GetFileName(arg), Path.GetFileName(Environment.ProcessPath), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// After an unpackaged restart, waits for the old process to exit so this one becomes the main instance
+    /// instead of redirecting to the dying one.
+    /// </summary>
+    private static void WaitForRestartedProcess()
+    {
+        if (!int.TryParse(Environment.GetEnvironmentVariable(RestartedFromEnvVar), out var oldPid))
+            return;
+
+        _isRestart = true;
+        // keep the marker out of WebView2's child processes
+        Environment.SetEnvironmentVariable(RestartedFromEnvVar, null);
+
+        try
+        {
+            using var oldProcess = GetProcessById(oldPid);
+            oldProcess.WaitForExit(TimeSpan.FromSeconds(10));
+        }
+        catch { /* already exited */ }
     }
 
     private void RequestRestartAfterClose()
@@ -211,16 +288,35 @@ public partial class App : Application
         try
         {
             var currentPid = Environment.ProcessId;
-            var appUserModelId = Windows.ApplicationModel.AppInfo.Current.AppUserModelId;
 
-            var psi = new ProcessStartInfo
+            ProcessStartInfo psi;
+            if (AppEnvironment.IsPackaged)
             {
-                FileName = "powershell.exe",
-                Arguments =
-                    $"-WindowStyle Hidden -Command \"Wait-Process -Id {currentPid}; Start-Process shell:AppsFolder\\{appUserModelId}!App\"",
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+                var appUserModelId = Windows.ApplicationModel.AppInfo.Current.AppUserModelId;
+
+                psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments =
+                        $"-WindowStyle Hidden -Command \"Wait-Process -Id {currentPid}; Start-Process shell:AppsFolder\\{appUserModelId}!App\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+            }
+            else
+            {
+                // no powershell (or shell:AppsFolder) under Wine: relaunch the exe directly.
+                // if startup already failed once after a restart, another restart would just loop.
+                if (_isRestart || Environment.ProcessPath is not { } exePath)
+                {
+                    FoxyLogger.AddCritical("Startup failed after a restart, exiting instead of restarting again.");
+                    Environment.Exit(1);
+                    return;
+                }
+
+                psi = new ProcessStartInfo(exePath) { UseShellExecute = false };
+                psi.Environment[RestartedFromEnvVar] = currentPid.ToString();
+            }
 
             Process.Start(psi);
             Environment.Exit(1);

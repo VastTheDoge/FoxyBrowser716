@@ -8,3 +8,4 @@ Add a file when a subsystem is complex enough that the map in `CLAUDE.md` plus t
 
 - `web-ui.md` — themed replacements for WebView2's UI (context menu, prompts, downloads), site permissions,
   history, private windows, how settings reach tabs, extension management.
+- `unpackaged.md` — the no-MSIX self-contained build (`-p:FoxyUnpackaged=true`), `AppEnvironment`, packaged-only call sites.

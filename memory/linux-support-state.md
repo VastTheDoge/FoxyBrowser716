@@ -1,29 +1,29 @@
 ---
 name: linux-support-state
-description: Where the Linux/Proton work lives, its merge state, and the DirectComposition blocker (as of 2026-10-09)
+description: Linux/Proton status: unpackaged build exists on v0.8.0 (untested on Linux); Copilot branch untrusted; DirectComposition is the likely wall (as of 2026-10-09)
 metadata:
   type: project
 ---
 
-Linux support = run the Windows build under Proton/Wine (WinUI 3 + WebView2 have no native Linux
-path). The work lives on `origin/copilot/create-implementation-plan-linux-support` (6 commits, remote
-only, forked from `master` 4ffb0dc, **not merged** into v0.8.0). Contents: `Program.cs` custom Main +
-`Bootstrap.Initialize` (WinAppSDK 1.8), `StaticData/PackageHelper.cs` (`IsPackaged` guards on
-StartupTask/prelaunch/ApplicationData), unpackaged publish profile `UnpackagedWin-x64.pubxml`,
-quoted-arg parsing, a direct-exe restart path when unpackaged (no powershell), and `LINUX_PROTON.md`.
+The Linux attempt is to run the unpackaged (no MSIX) self-contained build under Wine/Proton. That build
+was written fresh on v0.8.0 on 2026-10-09: `-p:FoxyUnpackaged=true` / `Scripts/PublishUnpackaged.ps1`,
+plus `StaticData/AppEnvironment` (`IsPackaged`, `IsWine`). It builds and publishes on Windows, but it
+**has never been launched**, on Windows or Linux. Mechanism: `Docs/architecture/unpackaged.md`. Setup
+and test checklist: `Docs/todo/linux-proton.md`. The long-term Linux answer is
+[[rust-rewrite-plan]].
 
-**Merge state (checked 2026-10-09 with `git merge-tree`):** one conflict only, in
-`MainWindow.xaml.cs` `SetIcon` — take the branch's `AppContext.BaseDirectory` version (works packaged
-and unpackaged). App.xaml.cs auto-merges; d6480e5's restart guard is in `WebviewTab.cs`, not App.
+**`origin/copilot/create-implementation-plan-linux-support` is untrusted.** It was generated ~2025 by
+Copilot on an old model. Don't merge it, build on it, or cite it. It is superseded by the work above.
+One known defect, as a warning: it calls `Bootstrap.Initialize` when unpackaged, which needs the
+WinAppSDK framework MSIX, and that can't be installed in a Wine prefix.
 
-**Known bug on the branch:** `Program.Main` calls `Bootstrap.Initialize` when unpackaged, which needs
-the WinAppSDK framework MSIX installed — impossible in a Wine prefix. Unpackaged build needs
-`WindowsAppSDKSelfContained=true` + `WindowsPackageType=None` and no bootstrap call.
+**Likely hard blocker:** WinUI 3 and its WebView2 control draw through DirectComposition, and Wine's
+dcomp is mostly stubs (a late-2025 MR makes the calls "succeed" but leaves the window blank white). No
+public report of a WinUI 3 app rendering under Wine was found. The win8-override trick for WebView2
+doesn't apply here, because it forces HWND hosting and WinUI uses visual hosting.
 
-**Likely hard blocker:** WinUI 3 renders through Microsoft.UI.Composition → DirectComposition, and
-WinUI's WebView2 uses composition hosting. Wine's dcomp is stubs (late-2025 MR makes calls "succeed"
-with a blank white window). No public report of a WinUI 3 app rendering under Wine/Proton found.
-The win8-override trick for WebView2 doesn't apply (it forces HWND hosting, WinUI uses visual hosting).
-
-**How to apply:** treat Proton as an unproven spike — test a blank WinUI 3 window under Proton
-Experimental / wine-staging before investing. Long-term Linux answer is [[rust-rewrite-plan]].
+**Gotchas:**
+- Build-checking in a git worktree under the scratchpad fails silently in XamlCompiler, because the
+  path is over 260 characters. Use a short path such as `RiderProjects\FoxyBrowser716-wt`.
+- An unpackaged run on Windows shares `%APPDATA%\FoxyBrowser716` with the user's running browser, so
+  don't smoke-launch it while their FoxyBrowser is open.

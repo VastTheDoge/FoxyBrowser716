@@ -45,6 +45,9 @@ the solution.)
 - **Run:** launch from Rider/VS with the *Unpackaged* (`commandName: Project`) or *(Package)*
   (`MsixPackage`) profile in `Properties/launchSettings.json` — those set up the Windows App SDK
   bootstrapper. Release builds are R2R + `TieredPGO`, published per-RID (`win-x64`/`win-x86`/`win-arm64`).
+- **Unpackaged (no MSIX) build:** `Scripts/PublishUnpackaged.ps1 [-Platform x64]` → self-contained folder in
+  `publish/` (also the Wine/Proton build). Packaged-only APIs must be guarded with `AppEnvironment.IsPackaged`.
+  See `Docs/architecture/unpackaged.md`.
 
 ## Tech stack
 

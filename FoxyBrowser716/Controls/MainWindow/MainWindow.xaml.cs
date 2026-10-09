@@ -46,7 +46,8 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
 
         try
         {
-            AppWindow.SetIcon(Path.Combine(Windows.ApplicationModel.Package.Current.InstalledPath, "Assets", "Foxybrowser716.ico"));
+            // the exe's folder, which is also the install folder when packaged (Package.Current throws unpackaged)
+            AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Foxybrowser716.ico"));
 
         }
         catch (Exception e)

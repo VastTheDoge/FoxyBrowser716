@@ -24,6 +24,21 @@
     <AssemblyName>FoxyBrowser716</AssemblyName>
   </PropertyGroup>
 
+  <!--
+    Unpackaged build: a plain exe folder instead of MSIX. This is also what runs under Wine/Proton on Linux.
+    Enable with -p:FoxyUnpackaged=true (see Scripts/PublishUnpackaged.ps1). Self-contained, so neither the .NET
+    runtime nor the Windows App SDK runtime needs installing (the latter is an MSIX and can't go in a Wine prefix).
+  -->
+  <PropertyGroup Condition="'$(FoxyUnpackaged)' == 'true'">
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(FoxyUnpackaged)' == 'true'">
+    <!-- MainWindow loads the window icon from disk; MSIX builds get it through the package layout instead -->
+    <Content Update="Assets\Foxybrowser716.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />

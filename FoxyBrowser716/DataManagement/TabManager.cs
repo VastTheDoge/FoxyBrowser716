@@ -58,7 +58,9 @@ public partial class TabManager : ObservableObject
 				+ "--site-per-process "
 				+ "--enable-gpu-rasterization "
 				+ "--enable-features=UseSkiaRenderer,CanvasOopRasterization "
-			
+				// Chromium's sandbox needs Windows security primitives Wine doesn't implement (and Wine is no sandbox itself)
+				+ (AppEnvironment.IsWine ? "--no-sandbox " : "")
+
 			/*"--enable-gpu " +
 				"--enable-gpu-rasterization " +
 				"--enable-hardware-overlays " +

@@ -8,8 +8,9 @@ public sealed record AiChatEntry(AiRole Role, string Text);
 
 /// <summary>
 /// One assistant chat: what the panel shows (<see cref="Transcript"/>, <see cref="Usage"/>) plus the provider
-/// conversation it was started with. The provider is fixed per chat; its key/model/effort are read each turn.
-/// Every tool call goes through the chat's <see cref="PermissionMode"/> before it runs.
+/// conversation it was started with. The provider is fixed per chat (its history is in that provider's format), but
+/// the model can change within it, and so can the effort. Every tool call goes through the chat's
+/// <see cref="PermissionMode"/> before it runs.
 /// </summary>
 public class AiChat
 {
@@ -21,8 +22,11 @@ public class AiChat
 		You are the assistant built into FoxyBrowser, a web browser. You talk with the user in a narrow side panel next to their tabs.
 
 		You can work with the tabs in the user's current window:
-		- Reading: list tabs, read a page as text, find text on a page, scroll. read_page gives the page as text with every link, button and form field marked inline with a ref, like [e12 button "Add to cart"]. Long pages come in parts; keep reading with start_at, or use find_in_page to jump to what you need.
-		- Acting: click, type into fields, choose dropdown options, press keys, open/switch/close tabs, navigate, go back/forward, reload. Refer to elements by ref. Refs go stale when the page changes, so read the page again after anything that changes it.
+		- Reading: list tabs and tab groups, read a page as text, find text on a page, scroll, wait for a page or for text to appear. read_page gives the page as text with every link, button and form field marked inline with a ref, like [e12 button "Add to cart"]. Long pages come in parts; keep reading with start_at, or use find_in_page to jump to what you need.
+		- screenshot shows what a tab looks like, at a much higher cost than reading. Use it only when the look matters or the text doesn't explain what the user sees.
+		- Acting: click, type into fields, choose dropdown options, press keys, open/switch/close tabs, navigate, go back/forward, reload. Refer to elements by ref. Refs go stale when the page changes, so read the page again after anything that changes it. Actions wait for any page they open to load and tell you about new tabs.
+		- Tab groups: group, ungroup, rename, recolor and remove them. Give new groups short names.
+		- Tab -1 is the FoxyBrowser home page; you can switch to it but not read it.
 		- run_script runs JavaScript in a page. Prefer the other tools; use it only when they can't do the job.
 
 		Depending on the user's settings, some tool calls need their approval. If one is declined or blocked, don't retry it or work around it; tell the user what you wanted to do.
@@ -47,15 +51,29 @@ public class AiChat
 	private readonly AiConversation _conversation;
 	private AiTurnCallbacks? _turn; // the running turn's callbacks, for approvals
 
-	public AiProviderKind Provider => _conversation.Kind;
-	public string Model => _conversation.CurrentModel;
+	/// <summary>The model the next turn uses. Change it with <see cref="SetModel"/> (same provider only).</summary>
+	public AiModelChoice Model { get; private set; }
 
-	public AiChat(MainWindow mainWindow, AiProviderKind provider, AiPermissionMode permissionMode)
+	public AiProviderKind Provider => Model.Provider;
+
+	/// <summary>Claude's effort for the next turn; other providers ignore it.</summary>
+	public AiEffort Effort { get; set; }
+
+	public AiChat(MainWindow mainWindow, AiModelChoice model, AiEffort effort, AiPermissionMode permissionMode)
 	{
 		_mainWindow = mainWindow;
+		Model = model;
+		Effort = effort;
 		PermissionMode = permissionMode;
 		var tools = BrowserTools.Create(mainWindow).Select(WithPermissionCheck).ToList();
-		_conversation = AiConversation.Create(provider, () => mainWindow.Instance.Settings, SystemPrompt, tools);
+		_conversation = AiConversation.Create(model.Provider, () => mainWindow.Instance.Settings, SystemPrompt, tools);
+	}
+
+	/// <summary>Switches to another model of the same provider; the history carries over.</summary>
+	public void SetModel(AiModelChoice model)
+	{
+		if (model.Provider != Provider) throw new ArgumentException("A chat can't change provider; start a new chat instead.", nameof(model));
+		Model = model;
 	}
 
 	/// <summary>
@@ -70,7 +88,7 @@ public class AiChat
 
 		try
 		{
-			await _conversation.SendAsync(message, new AiTurnCallbacks
+			await _conversation.SendAsync(message, Model.Model, Effort, new AiTurnCallbacks
 			{
 				Text = text =>
 				{
@@ -88,6 +106,7 @@ public class AiChat
 				Usage = usage =>
 				{
 					Usage = Usage.Add(usage);
+					if (Provider == AiProviderKind.Claude && usage.CostUsd is { } cost) AiBudget.Add(cost);
 					callbacks.Usage?.Invoke(usage);
 				},
 			}, cancellationToken);

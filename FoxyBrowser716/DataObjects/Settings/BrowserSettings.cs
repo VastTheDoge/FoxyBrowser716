@@ -331,55 +331,33 @@ public sealed partial class BrowserSettings : ObservableObject
     #endregion
 
     #region Assistant
-    [SettingInfo(Category = SettingsCategory.Assistant, Name = "Provider",
-        Description = "Which AI service the assistant panel talks to. New chats use this; an open chat keeps the provider it started with.")]
-    public AiProviderKind AiProvider { get; set => SetProperty(ref field, value); } = AiProviderKind.Claude;
+    [SettingInfo(Category = SettingsCategory.Assistant, Name = "AI assistant",
+        Description = "Show the AI assistant panel (☰ menu → AI Assistant) for this instance. Its models, keys, budget and permissions are set in the panel itself (the gear at its top).")]
+    public bool AiEnabled { get; set => SetProperty(ref field, value); } = true;
 
-    [JsonIgnore] // lives in the Windows Credential Locker, never in Settings.json
-    [SettingInfo(Category = SettingsCategory.Assistant, Name = "Claude API key", Secret = true,
-        Description = "Create one in the Claude Console (platform.claude.com). Stored in Windows Credential Manager and shared by every instance.")]
-    public string ClaudeApiKey
-    {
-        get => AiCredentials.Get(AiProviderKind.Claude) ?? string.Empty;
-        set => AiCredentials.Set(AiProviderKind.Claude, value);
-    }
+    // The rest are edited in the panel's own settings view (AiSettingsView), not the settings page. API keys and the
+    // Claude budget are shared by every instance and live elsewhere (AiCredentials, AiBudget).
 
-    [SettingInfo(Category = SettingsCategory.Assistant, Name = "Claude model",
-        Description = "Model id, such as claude-opus-5-5 (default), claude-sonnet-5-5 (faster, cheaper) or claude-haiku-5-5 (fastest, cheapest).")]
-    public string ClaudeModel { get; set => SetProperty(ref field, value); } = ClaudeConversation.DefaultModel;
+    /// <summary>The model new chats start with; the panel's model menu sets it.</summary>
+    public AiModelChoice AiModel { get; set => SetProperty(ref field, value); } = AiModelChoice.Default;
 
-    [SettingInfo(Category = SettingsCategory.Assistant, Name = "Claude effort",
-        Description = "How much Claude thinks before answering. Higher can give better answers to hard questions but is slower and uses more tokens.")]
-    public AiEffort ClaudeEffort { get; set => SetProperty(ref field, value); } = AiEffort.Medium;
+    /// <summary>Claude's effort for new chats; the panel's effort menu sets it.</summary>
+    public AiEffort AiEffort { get; set => SetProperty(ref field, value); } = AiEffort.Medium;
 
-    [SettingInfo(Category = SettingsCategory.Assistant, Name = "OpenAI-compatible base URL",
-        Description = "The /v1 address of a server that speaks OpenAI's chat completions API: OpenAI, OpenRouter, Mistral, or a local one such as Ollama (http://localhost:11434/v1) or LM Studio (http://localhost:1234/v1).")]
+    /// <summary>The /v1 address of a server that speaks OpenAI's chat completions API.</summary>
     public string OpenAiBaseUrl { get; set => SetProperty(ref field, value); } = "https://api.openai.com/v1";
 
-    [JsonIgnore] // lives in the Windows Credential Locker, never in Settings.json
-    [SettingInfo(Category = SettingsCategory.Assistant, Name = "OpenAI-compatible API key", Secret = true,
-        Description = "Leave empty for local servers that don't need one. Stored in Windows Credential Manager and shared by every instance.")]
-    public string OpenAiApiKey
-    {
-        get => AiCredentials.Get(AiProviderKind.OpenAiCompatible) ?? string.Empty;
-        set => AiCredentials.Set(AiProviderKind.OpenAiCompatible, value);
-    }
-
-    [SettingInfo(Category = SettingsCategory.Assistant, Name = "OpenAI-compatible model",
-        Description = "The model name exactly as the server lists it.")]
-    public string OpenAiModel { get; set => SetProperty(ref field, value); } = string.Empty;
-
-    [SettingInfo(Category = SettingsCategory.Assistant, Name = "Permissions",
-        Description = "What the assistant may do without asking. Read-only: reads tabs and pages on its own, asks before every action. Ask: asks before everything. Brave: never asks, except to run scripts. Custom: per tool, set below. The lightbulb in the chat panel changes it for one chat.")]
+    /// <summary>What the assistant may do without asking, for new chats; the mode button changes it per chat.</summary>
     public AiPermissionMode AiPermissionMode { get; set => SetProperty(ref field, value); } = AiPermissionMode.ReadOnly;
 
     /// <summary>Per-tool choices for <see cref="AiPermissionMode.Custom"/>, by tool name. Edited by <see cref="AiToolPermissionsController"/>; replace the dictionary to save.</summary>
     public Dictionary<string, AiToolPermission> AiToolPermissions { get; set => SetProperty(ref field, value); } = [];
 
-    [JsonIgnore]
-    [SettingInfo(Category = SettingsCategory.Assistant, Name = "Custom permissions",
-        Description = "Used when Permissions is set to Custom (in settings or for a chat). Tools not changed here behave like Read-only.")]
-    public AiToolPermissionsController? AiToolPermissionsEditor;
+    /// <summary>Name tab groups from their tabs with <see cref="AiQuickModel"/> while they still have the default name.</summary>
+    public bool AiNameTabGroups { get; set => SetProperty(ref field, value); } = false;
+
+    /// <summary>A small, cheap model for quick jobs like naming tab groups.</summary>
+    public AiModelChoice AiQuickModel { get; set => SetProperty(ref field, value); } = AiModelChoice.DefaultQuick;
     #endregion
 
     #region WebView2

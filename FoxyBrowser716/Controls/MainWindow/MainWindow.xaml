@@ -35,7 +35,7 @@
                 <settingsPage:SettingsPage x:Name="SettingsPage" Visibility="Collapsed" CornerRadius="8"/>
             </Grid>
             
-            <Popup x:Name="ExtensionPopupRoot" Width="350" MaxHeight="600" Margin="34,30,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" LightDismissOverlayMode="On" IsLightDismissEnabled="True">
+            <Popup x:Name="ExtensionPopupRoot" Margin="34,30,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" LightDismissOverlayMode="On" IsLightDismissEnabled="True">
                 <WebView2 x:Name="ExtensionPopupWebview" x:FieldModifier="public" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
             </Popup>
             
@@ -109,7 +109,7 @@
             </Popup>
             
             <Popup x:Name="CenterPopupRootRoot" Margin="50,50" HorizontalAlignment="Left" VerticalAlignment="Top" LightDismissOverlayMode="On" IsLightDismissEnabled="True" Closed="CenterPopupRootRoot_OnClosed">
-                <StackPanel x:Name="CenterPopupRoot" CornerRadius="5" BorderThickness="2">
+                <StackPanel x:Name="CenterPopupRoot" CornerRadius="5" BorderThickness="2" MaxWidth="620">
                     <generic:FTextButton x:Name="CenterPopupCloseButton" OnClick="CenterPopupCloseButton_OnOnClick" HorizontalAlignment="Right" Icon="{material:MaterialIconExt Kind=Close}" ButtonText="Close" CornerRadius="5"/>
                     <ScrollViewer 
                         VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" 

@@ -70,6 +70,7 @@
              GotFocus="SearchBox_OnGotFocus" 
              LostFocus="SearchBox_OnLostFocus" 
              KeyUp="SearchBox_OnKeyUp"
+             PreviewKeyDown="SearchBox_OnPreviewKeyDown"
              BeforeTextChanging="SearchBox_TextChanging"
              PlaceholderText=""/>
 </UserControl>

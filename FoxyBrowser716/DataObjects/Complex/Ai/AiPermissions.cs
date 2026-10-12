@@ -3,14 +3,14 @@ using FoxyBrowser716.DataObjects.Settings;
 
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
-/// <summary>What the assistant may do without asking. Default in settings; the panel's lightbulb changes it per chat.</summary>
+/// <summary>What the assistant may do without asking. Default in the panel's settings; the mode button changes it per chat.</summary>
 public enum AiPermissionMode
 {
 	/// <summary>Reads run on their own; every action asks.</summary>
 	[Description("Read-only")] ReadOnly,
 	/// <summary>Everything asks, reads included.</summary>
 	Ask,
-	/// <summary>Nothing asks, except running scripts.</summary>
+	/// <summary>Nothing asks, scripts included.</summary>
 	Brave,
 	/// <summary>Per tool, from <see cref="BrowserSettings.AiToolPermissions"/>.</summary>
 	Custom,
@@ -24,14 +24,15 @@ public static class AiPermissions
 	public static AiToolPermission Resolve(AiPermissionMode mode, AiTool tool, BrowserSettings settings) => mode switch
 	{
 		AiPermissionMode.Ask => AiToolPermission.Ask,
-		// scripts can do anything the user can on that site (read mail, send forms), so they keep asking
-		AiPermissionMode.Brave => tool.Kind == AiToolKind.Script ? AiToolPermission.Ask : AiToolPermission.Allow,
+		AiPermissionMode.Brave => AiToolPermission.Allow,
 		AiPermissionMode.Custom => settings.AiToolPermissions.TryGetValue(tool.Name, out var choice) ? choice : Default(tool),
 		_ => Default(tool),
 	};
 
 	/// <summary>Read-only mode's choice, also the starting point for Custom.</summary>
 	public static AiToolPermission Default(AiTool tool) => tool.Kind == AiToolKind.Read ? AiToolPermission.Allow : AiToolPermission.Ask;
+
+	public static string Name(AiPermissionMode mode) => mode == AiPermissionMode.ReadOnly ? "Read-only" : mode.ToString();
 
 	public static MaterialIconKind Icon(AiPermissionMode mode) => mode switch
 	{
@@ -44,8 +45,8 @@ public static class AiPermissions
 	public static string Explain(AiPermissionMode mode) => mode switch
 	{
 		AiPermissionMode.Ask => "Asks before everything, reading included.",
-		AiPermissionMode.Brave => "Acts without asking. Running scripts still asks.",
-		AiPermissionMode.Custom => "Per tool, as set in Settings → AI Assistant.",
+		AiPermissionMode.Brave => "Acts without asking, running scripts included.",
+		AiPermissionMode.Custom => "Per tool, as set in the assistant's settings (gear icon).",
 		_ => "Reads tabs and pages on its own; asks before every action.",
 	};
 }

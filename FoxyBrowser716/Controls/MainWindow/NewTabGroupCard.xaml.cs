@@ -222,7 +222,8 @@ public sealed partial class NewTabGroupCard : UserControl
                     cursorPosition.X = lpPoint.X;
                     cursorPosition.Y = lpPoint.Y;
                     
-                    TabGroup.TabManager.CreateWindowWithTab(tab, new Rect(cursorPosition, new Size(250, 100)));
+                    var scale = XamlRoot?.RasterizationScale ?? 1.0;
+                    TabGroup.TabManager.CreateWindowWithTab(tab, new Rect(cursorPosition, new Size(250 * scale, 100 * scale)));
                 }
             }
         }

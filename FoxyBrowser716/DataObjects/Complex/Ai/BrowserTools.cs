@@ -5,13 +5,20 @@ using Microsoft.Web.WebView2.Core;
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
 /// <summary>
-/// The tools the assistant gets for the window it lives in: tabs, reading pages as text, and acting on them.
-/// Permission checks happen in <see cref="AiChat"/>; these only validate input and do the work.
+/// The tools the assistant gets for the window it lives in: tabs and tab groups, reading pages as text (or a
+/// screenshot), and acting on them. Permission checks happen in <see cref="AiChat"/>; these only validate input
+/// and do the work.
 /// </summary>
 public static class BrowserTools
 {
 	/// <summary>Characters per <c>read_page</c> call (~5k tokens), small enough for local models' context windows.</summary>
 	private const int ReadChunk = 20_000;
+
+	/// <summary><see cref="TabManager.ActiveTabId"/> while the home page or the settings page is showing.</summary>
+	private const int HomeId = -1, SettingsId = -2;
+
+	/// <summary>How long an action waits for a navigation it started to finish loading.</summary>
+	private static readonly TimeSpan NavigationWait = TimeSpan.FromSeconds(10);
 
 	public static List<AiTool> Create(MainWindow window)
 	{
@@ -22,8 +29,13 @@ public static class BrowserTools
 		async Task<(int Id, WebviewTab Tab, CoreWebView2 Core)> Page(IReadOnlyDictionary<string, JsonElement> input)
 		{
 			var id = input.ContainsKey("tab_id") ? GetInt(input, "tab_id") : tabs.ActiveTabId;
-			if (id < 0)
-				throw new AiToolException("The active tab is a FoxyBrowser page (home or settings), not a website. Pick a website tab from get_list_of_tabs.");
+			switch (id)
+			{
+				case HomeId:
+					throw new AiToolException("Tab -1 is the FoxyBrowser home page: part of the browser, not a website, so page tools can't read or use it. Pick a website tab from get_list_of_tabs.");
+				case SettingsId:
+					throw new AiToolException("The user is on the FoxyBrowser settings page, which page tools can't read or use. Pick a website tab from get_list_of_tabs.");
+			}
 			var tab = Tab(id);
 			await Task.WhenAny(tab.InitializeTask, Task.Delay(TimeSpan.FromSeconds(10)));
 			if (!tab.InitializeTask.IsCompletedSuccessfully || tab.Core?.CoreWebView2 is not { } core)
@@ -35,9 +47,14 @@ public static class BrowserTools
 			? tab!
 			: throw new AiToolException($"No tab with id {id}. Use get_list_of_tabs to see the open tabs.");
 
+		TabGroup Group(int id) => tabs.Groups.FirstOrDefault(g => g.Id == id)
+			?? throw new AiToolException($"No group with id {id}. Use get_list_of_tabs to see the groups.");
+
 		static string Host(CoreWebView2 core) => Uri.TryCreate(core.Source, UriKind.Absolute, out var uri) ? uri.Host : core.Source;
 
 		static string Where(int id, CoreWebView2 core) => $"Tab {id} is at {core.Source} (\"{core.DocumentTitle}\").";
+
+		string TabLine(WebviewTab tab) => $"Tab {tab.Id}: \"{tab.Info.Title}\" at {tab.Info.Url}{(tab.Id == tabs.ActiveTabId ? " (ACTIVE)" : "")}";
 
 		// fails the call with a useful message when the page script reports a problem with the element
 		static JsonElement Check(JsonElement result, string elementRef)
@@ -50,7 +67,7 @@ public static class BrowserTools
 				"covered" => $"{desc} is covered by {result.GetProperty("cover").GetString()}. Deal with that first (often a cookie banner or popup).",
 				"invisible" => $"{desc} has no size on screen, so it can't be clicked. It may be in a closed menu.",
 				"sensitive" => "Typing into password and payment card fields is blocked. Ask the user to fill that in themselves.",
-				"disabled" => $"{desc} is disabled or read-only.",
+				"disabled" => $"{desc} is disabled (or read-only), so it can't be used right now.",
 				"not a select" => $"{desc} isn't a <select>. Click it to open it, then click the option.",
 				"no such option" => $"No option like that. Options: {string.Join(" | ", result.GetProperty("options").EnumerateArray().Select(o => o.GetString()))}",
 				var other => $"{desc}: {other}",
@@ -59,26 +76,49 @@ public static class BrowserTools
 
 		static string Describe(JsonElement result, string elementRef) => Check(result, elementRef).GetProperty("desc").GetString() ?? elementRef;
 
-		// lets the page react (navigation start, menus opening) before reporting where things stand
-		static Task Settle() => Task.Delay(400);
+		// Runs a page action, waits for any navigation it starts, and reports where the tab is now and any tabs it opened
+		// (links with target=_blank open a tab and switch to it).
+		async Task<string> Act(int id, CoreWebView2 core, Func<Task> action, string done)
+		{
+			var before = tabs.GetAllTabs().Keys.ToHashSet();
+			var navigated = await PageAgent.RunAndWaitForNavigation(core, action, NavigationWait);
+
+			var sb = new StringBuilder(done).Append(' ').Append(Where(id, core));
+			if (navigated) sb.Append(" (It navigated.)");
+			foreach (var (newId, tab) in tabs.GetAllTabs().Where(t => !before.Contains(t.Key)))
+				sb.Append($" It opened a new tab {newId} at {tab.Info.Url}{(newId == tabs.ActiveTabId ? ", which is now the active tab" : "")}.");
+			return sb.ToString();
+		}
+
+		static Task<AiToolOutput> Done(string text) => Task.FromResult<AiToolOutput>(text);
 		#endregion
 
 		var tabId = Prop("integer", "Tab id from get_list_of_tabs. Leave out to use the tab the user is looking at.");
 		var elementRef = Prop("string", "Element ref from read_page or find_in_page, like \"e12\".");
+		var tabIds = ArrayProp("integer", "Tab ids from get_list_of_tabs.");
+		var groupId = Prop("integer", "Group id from get_list_of_tabs.");
+		var color = ColorProp("Group color as red, green and blue, each 0-255, like { \"r\": 173, \"g\": 216, \"b\": 230 } for light blue.");
 
 		return
 		[
 			#region Reading
 			new("get_list_of_tabs", "List tabs", AiToolKind.Read,
-				"List the open tabs in this window: id, title, URL, and which one is active.",
+				"List the tabs in this window in the order the user sees them, with their tab groups: ids, titles, URLs, and which one is active. " +
+				"Tab -1 is the FoxyBrowser home page (the user can be on it; switch_to_tab can go back to it).",
 				Props(), [],
 				_ =>
 				{
 					var sb = new StringBuilder();
-					foreach (var (id, tab) in tabs.GetAllTabs())
-						sb.AppendLine($"Tab {id}: '{tab.Info.Title}' at '{tab.Info.Url}'{(id == tabs.ActiveTabId ? " (ACTIVE)" : "")}");
-					if (tabs.ActiveTabId < 0) sb.AppendLine("The user is looking at a FoxyBrowser page (home or settings), not one of these tabs.");
-					return Task.FromResult(sb.Length > 0 ? sb.ToString() : "No tabs are open.");
+					sb.AppendLine($"Tab -1: FoxyBrowser home page{(tabs.ActiveTabId == HomeId ? " (ACTIVE)" : "")}");
+					if (tabs.ActiveTabId == SettingsId) sb.AppendLine("The user is looking at the FoxyBrowser settings page.");
+					foreach (var tab in tabs.Tabs) sb.AppendLine(TabLine(tab));
+					foreach (var group in tabs.Groups)
+					{
+						sb.AppendLine($"Group {group.Id} \"{group.Name}\" ({Rgb(group.GroupColor)}), {group.Tabs.Count} tab(s):");
+						foreach (var tab in group.Tabs) sb.AppendLine("  " + TabLine(tab));
+					}
+					if (tabs.GetAllTabs().Count == 0) sb.AppendLine("No website tabs are open.");
+					return Done(sb.ToString());
 				}),
 
 			new("read_page", "Read page", AiToolKind.Read,
@@ -92,12 +132,21 @@ public static class BrowserTools
 					await PageAgent.WaitForLoad(core, TimeSpan.FromSeconds(8));
 					var start = input.ContainsKey("start_at") ? GetInt(input, "start_at") : 0;
 					var page = await PageAgent.Read(core, start, ReadChunk);
+					if (page.TryGetProperty("empty", out _))
+					{
+						// caught between two documents while navigating
+						await Task.Delay(1000);
+						await PageAgent.WaitForLoad(core, TimeSpan.FromSeconds(5));
+						page = await PageAgent.Read(core, start, ReadChunk);
+						if (page.TryGetProperty("empty", out _))
+							throw new AiToolException($"Tab {id} hasn't shown anything yet; it's still loading. Use wait_for, then read again.");
+					}
 
 					var total = page.GetProperty("total").GetInt32();
 					var end = page.GetProperty("end").GetInt32();
 					var sb = new StringBuilder();
 					sb.AppendLine($"Tab {id}: \"{page.GetProperty("title").GetString()}\" at {page.GetProperty("url").GetString()}");
-					if (page.GetProperty("loading").GetBoolean()) sb.AppendLine("(The page is still loading; read again if something seems missing.)");
+					if (page.GetProperty("loading").GetBoolean()) sb.AppendLine("(The page is still loading; use wait_for and read again if something seems missing.)");
 					sb.AppendLine(total > ReadChunk || start > 0
 						? $"Characters {page.GetProperty("start").GetInt32():N0}-{end:N0} of {total:N0}."
 						: $"Whole page, {total:N0} characters.");
@@ -117,13 +166,56 @@ public static class BrowserTools
 					await PageAgent.WaitForLoad(core, TimeSpan.FromSeconds(8));
 					var result = await PageAgent.Find(core, GetString(input, "text"));
 					var count = result.GetProperty("count").GetInt32();
-					if (count == 0) return $"No matches on tab {id}.";
+					if (count == 0) return result.TryGetProperty("loading", out _) ? $"Tab {id} is still loading; try wait_for first." : $"No matches on tab {id}.";
 
 					var sb = new StringBuilder($"{count} matching line(s) on tab {id}{(count > 40 ? ", first 40 shown" : "")}:\n");
 					foreach (var match in result.GetProperty("matches").EnumerateArray())
 						sb.AppendLine($"[start_at {match.GetProperty("offset").GetInt32()}] {match.GetProperty("line").GetString()}");
 					return sb.ToString();
 				}),
+
+			new("wait_for", "Wait for page", AiToolKind.Read,
+				"Wait for a tab to finish loading, or for some text to appear on it (content that arrives after the page loads, like a status that says \"Loading...\" at first). " +
+				"Returns as soon as the text shows up.",
+				Props(("tab_id", tabId), ("text", Prop("string", "Text to wait for, case-insensitive. Leave out to just wait for the page to load.")),
+					("seconds", Prop("integer", "How long to wait at most, 1-30. Default 10."))), [],
+				async input =>
+				{
+					var (id, _, core) = await Page(input);
+					var seconds = input.ContainsKey("seconds") ? Math.Clamp(GetInt(input, "seconds"), 1, 30) : 10;
+					var deadline = DateTime.UtcNow.AddSeconds(seconds);
+					var started = DateTime.UtcNow;
+					await PageAgent.WaitForLoad(core, TimeSpan.FromSeconds(seconds));
+
+					if (!input.ContainsKey("text"))
+						return DateTime.UtcNow < deadline ? $"Tab {id} has finished loading." : $"Tab {id} was still loading after {seconds} seconds.";
+
+					var text = GetString(input, "text");
+					while (true)
+					{
+						var result = await PageAgent.Find(core, text);
+						if (result.GetProperty("count").GetInt32() > 0)
+							return $"\"{text}\" is on tab {id} (after {(DateTime.UtcNow - started).TotalSeconds:0.#} s). Read or find it now.";
+						if (DateTime.UtcNow >= deadline)
+							return $"\"{text}\" didn't appear on tab {id} within {seconds} seconds.";
+						await Task.Delay(500);
+					}
+				}),
+
+			new("screenshot", "Screenshot", AiToolKind.Read,
+				"Take a screenshot of what a tab shows on screen right now. It costs far more than read_page (about 1,500 tokens per image), so use it only when needed: " +
+				"when how the page looks matters (images, charts, maps, canvas, a broken layout) or read_page doesn't explain what the user is seeing. " +
+				"Shows only the visible part; scroll_page to see more. Works best on the active tab.",
+				Props(("tab_id", tabId)), [],
+				async input =>
+				{
+					var (id, _, core) = await Page(input);
+					var image = await PageAgent.Screenshot(core, TimeSpan.FromSeconds(8));
+					return new AiToolOutput($"Screenshot of tab {id} ({core.Source}).", image, "image/jpeg");
+				})
+			{
+				ReturnsImage = true,
+			},
 
 			new("scroll_page", "Scroll page", AiToolKind.Read,
 				"Scroll a tab: up/down by a screen, to the top/bottom, or to an element. Useful for pages that load more content as you scroll; read the page again afterwards.",
@@ -142,7 +234,8 @@ public static class BrowserTools
 
 			#region Page actions
 			new("click", "Click", AiToolKind.Action,
-				"Click an element on a page, like a real mouse click. Use a ref from read_page or find_in_page.",
+				"Click an element on a page, like a real mouse click. Use a ref from read_page or find_in_page. " +
+				"If the click opens a page or a new tab, this waits for it to load and says where things are.",
 				Props(("tab_id", tabId), ("ref", elementRef)), ["ref"],
 				async input =>
 				{
@@ -151,9 +244,8 @@ public static class BrowserTools
 					var target = Check(await PageAgent.Target(core, r), r);
 					var x = target.GetProperty("x").GetDouble();
 					var y = target.GetProperty("y").GetDouble();
-					await PageAgent.Click(core, x, y);
-					await Settle();
-					return $"Clicked {target.GetProperty("desc").GetString()}. {Where(id, core)} Read the page again to see what changed.";
+					var result = await Act(id, core, () => PageAgent.Click(core, x, y), $"Clicked {target.GetProperty("desc").GetString()}.");
+					return result + " Read the page again to see what changed.";
 				})
 			{
 				Describe = async input =>
@@ -174,15 +266,17 @@ public static class BrowserTools
 					var (id, _, core) = await Page(input);
 					var r = GetString(input, "ref");
 					var text = GetString(input, "text", allowEmpty: true);
+					var enter = GetBool(input, "press_enter");
 					var focus = Check(await PageAgent.Focus(core, r), r);
 					if (!focus.GetProperty("focused").GetBoolean())
 						throw new AiToolException($"Couldn't focus {focus.GetProperty("desc").GetString()}. Try clicking it first.");
 
-					if (text.Length > 0) await PageAgent.InsertText(core, text);
-					else await PageAgent.PressKey(core, "Backspace");
-					if (GetBool(input, "press_enter")) await PageAgent.PressKey(core, "Enter");
-					await Settle();
-					return $"Typed into {focus.GetProperty("desc").GetString()}{(GetBool(input, "press_enter") ? " and pressed Enter" : "")}. {Where(id, core)}";
+					return await Act(id, core, async () =>
+					{
+						if (text.Length > 0) await PageAgent.InsertText(core, text);
+						else await PageAgent.PressKey(core, "Backspace");
+						if (enter) await PageAgent.PressKey(core, "Enter");
+					}, $"Typed into {focus.GetProperty("desc").GetString()}{(enter ? " and pressed Enter" : "")}.");
 				})
 			{
 				Describe = async input =>
@@ -202,9 +296,9 @@ public static class BrowserTools
 				{
 					var (id, _, core) = await Page(input);
 					var r = GetString(input, "ref");
-					var result = Check(await PageAgent.Select(core, r, GetString(input, "option")), r);
-					await Settle();
-					return $"Chose \"{result.GetProperty("selected").GetString()}\" in {result.GetProperty("desc").GetString()}. {Where(id, core)}";
+					JsonElement result = default;
+					var done = await Act(id, core, async () => result = Check(await PageAgent.Select(core, r, GetString(input, "option")), r), "");
+					return $"Chose \"{result.GetProperty("selected").GetString()}\" in {result.GetProperty("desc").GetString()}.{done}";
 				})
 			{
 				Describe = async input =>
@@ -222,9 +316,7 @@ public static class BrowserTools
 				{
 					var (id, _, core) = await Page(input);
 					var key = GetString(input, "key");
-					await PageAgent.PressKey(core, key);
-					await Settle();
-					return $"Pressed {key}. {Where(id, core)}";
+					return await Act(id, core, () => PageAgent.PressKey(core, key), $"Pressed {key}.");
 				})
 			{
 				Describe = async input =>
@@ -244,21 +336,20 @@ public static class BrowserTools
 					var url = GetString(input, "url");
 					var id = tabs.AddTab(url);
 					tabs.SwapActiveTabTo(id);
-					return Task.FromResult($"Opened tab {id} at '{url}'. It may still be loading.");
+					return Done($"Opened tab {id} at '{url}' and switched to it. It may still be loading; read_page waits for it.");
 				})
 			{
 				Describe = input => Task.FromResult($"Open a new tab at {GetString(input, "url")}"),
 			},
 
 			new("navigate_tab_to_url", "Navigate tab", AiToolKind.Action,
-				"Point an existing tab at a URL. Text that isn't a valid URL is searched with the default search engine.",
+				"Point an existing tab at a URL and wait for it to load. Text that isn't a valid URL is searched with the default search engine.",
 				Props(("tab_id", tabId), ("url", Prop("string", "URL to open, or text to search for."))), ["url"],
 				async input =>
 				{
-					var (id, tab, _) = await Page(input);
+					var (id, tab, core) = await Page(input);
 					var url = GetString(input, "url");
-					await tab.NavigateOrSearch(url);
-					return $"Tab {id} is navigating to (or searching for) '{url}'.";
+					return await Act(id, core, () => tab.NavigateOrSearch(url), $"Went to (or searched for) '{url}'.");
 				})
 			{
 				Describe = async input =>
@@ -269,17 +360,22 @@ public static class BrowserTools
 			},
 
 			new("switch_to_tab", "Switch tab", AiToolKind.Action,
-				"Show a tab to the user.",
-				Props(("tab_id", Prop("integer", "Tab id from get_list_of_tabs."))), ["tab_id"],
+				"Show a tab to the user. Tab -1 is the FoxyBrowser home page.",
+				Props(("tab_id", Prop("integer", "Tab id from get_list_of_tabs, or -1 for the home page."))), ["tab_id"],
 				input =>
 				{
 					var id = GetInt(input, "tab_id");
-					Tab(id);
+					if (id == SettingsId) throw new AiToolException("The assistant can't open the settings page. Ask the user to open it (☰ menu → Settings).");
+					if (id != HomeId) Tab(id);
 					tabs.SwapActiveTabTo(id);
-					return Task.FromResult($"Switched to tab {id}.");
+					return Done(id == HomeId ? "Switched to the home page." : $"Switched to tab {id}.");
 				})
 			{
-				Describe = input => Task.FromResult($"Switch to tab {GetInt(input, "tab_id")} (\"{Tab(GetInt(input, "tab_id")).Info.Title}\")"),
+				Describe = input =>
+				{
+					var id = GetInt(input, "tab_id");
+					return Task.FromResult(id == HomeId ? "Switch to the home page" : $"Switch to tab {id} (\"{Tab(id).Info.Title}\")");
+				},
 			},
 
 			new("close_tab", "Close tab", AiToolKind.Action,
@@ -288,36 +384,126 @@ public static class BrowserTools
 				input =>
 				{
 					var id = GetInt(input, "tab_id");
+					if (id < 0) throw new AiToolException("The home and settings pages can't be closed.");
 					Tab(id);
 					tabs.RemoveTab(id);
-					return Task.FromResult(tabs.TryGetTab(id, out _) ? $"Tab {id} wasn't closed (it may be the last tab)." : $"Closed tab {id}.");
+					return Done(tabs.TryGetTab(id, out _) ? $"Tab {id} wasn't closed." : $"Closed tab {id}. The active tab is now {(tabs.ActiveTabId == HomeId ? "the home page" : tabs.ActiveTabId.ToString())}.");
 				})
 			{
 				Describe = input => Task.FromResult($"Close tab {GetInt(input, "tab_id")} (\"{Tab(GetInt(input, "tab_id")).Info.Title}\")"),
 			},
 
 			new("history_navigation", "Back / forward / reload", AiToolKind.Action,
-				"Go back, go forward, or reload in a tab.",
+				"Go back, go forward, or reload in a tab, and wait for the page to load.",
 				Props(("tab_id", tabId), ("action", Prop("string", "back, forward or reload.", ["back", "forward", "reload"]))), ["action"],
 				async input =>
 				{
 					var (id, _, core) = await Page(input);
-					switch (GetString(input, "action"))
+					var action = GetString(input, "action");
+					Action go = action switch
 					{
-						case "back" when core.CanGoBack: core.GoBack(); break;
-						case "forward" when core.CanGoForward: core.GoForward(); break;
-						case "reload": core.Reload(); break;
-						case "back" or "forward": throw new AiToolException($"Tab {id} has nowhere to go {GetString(input, "action")}.");
-						default: throw new AiToolException("action must be back, forward or reload.");
-					}
-					await Settle();
-					return Where(id, core);
+						"back" when core.CanGoBack => core.GoBack,
+						"forward" when core.CanGoForward => core.GoForward,
+						"reload" => core.Reload,
+						"back" or "forward" => throw new AiToolException($"Tab {id} has nowhere to go {action}."),
+						_ => throw new AiToolException("action must be back, forward or reload."),
+					};
+					return await Act(id, core, () => { go(); return Task.CompletedTask; }, "Done.");
 				})
 			{
 				Describe = async input =>
 				{
 					var (id, _, core) = await Page(input);
 					return $"{GetString(input, "action") switch { "back" => "Go back", "forward" => "Go forward", _ => "Reload" }} in tab {id} ({Host(core)})";
+				},
+			},
+			#endregion
+
+			#region Tab groups
+			new("group_tabs", "Group tabs", AiToolKind.Action,
+				"Put tabs into a tab group: a new group (give it a short name), or an existing one (group_id). Tabs already in another group move over; a group left empty disappears.",
+				Props(("tab_ids", tabIds), ("name", Prop("string", "Name for a new group, a few words. Renames the group when used with group_id.")),
+					("group_id", groupId), ("color", color)), ["tab_ids"],
+				input =>
+				{
+					var ids = GetIntArray(input, "tab_ids");
+					foreach (var id in ids) Tab(id);
+
+					var group = input.ContainsKey("group_id") ? Group(GetInt(input, "group_id")) : tabs.CreateGroup();
+					if (input.ContainsKey("name")) group.Name = GetString(input, "name").Trim();
+					if (input.ContainsKey("color")) group.GroupColor = GetColor(input, "color");
+					foreach (var id in ids) tabs.MoveTabToGroup(id, group.Id);
+					return Done($"Group {group.Id} \"{group.Name}\" has {group.Tabs.Count} tab(s): {string.Join(", ", group.Tabs.Select(t => t.Id))}.");
+				})
+			{
+				Describe = input =>
+				{
+					var ids = string.Join(", ", GetIntArray(input, "tab_ids").Select(id => $"\"{Tab(id).Info.Title}\""));
+					var into = input.ContainsKey("group_id")
+						? $"group \"{Group(GetInt(input, "group_id")).Name}\""
+						: input.ContainsKey("name") ? $"a new group \"{GetString(input, "name")}\"" : "a new group";
+					return Task.FromResult($"Put {ids} into {into}");
+				},
+			},
+
+			new("ungroup_tabs", "Ungroup tabs", AiToolKind.Action,
+				"Take tabs out of their groups (they stay open). A group left empty disappears.",
+				Props(("tab_ids", tabIds)), ["tab_ids"],
+				input =>
+				{
+					var ids = GetIntArray(input, "tab_ids");
+					foreach (var id in ids) Tab(id);
+					foreach (var id in ids) tabs.MoveTabToGroup(id, -1);
+					return Done($"Tabs {string.Join(", ", ids)} are no longer in a group.");
+				})
+			{
+				Describe = input => Task.FromResult($"Take {string.Join(", ", GetIntArray(input, "tab_ids").Select(id => $"\"{Tab(id).Info.Title}\""))} out of their groups"),
+			},
+
+			new("edit_group", "Edit group", AiToolKind.Action,
+				"Rename a tab group or change its color.",
+				Props(("group_id", groupId), ("name", Prop("string", "New name, a few words.")), ("color", color)), ["group_id"],
+				input =>
+				{
+					var group = Group(GetInt(input, "group_id"));
+					if (!input.ContainsKey("name") && !input.ContainsKey("color")) throw new AiToolException("Give a name or a color.");
+					if (input.ContainsKey("name")) group.Name = GetString(input, "name").Trim();
+					if (input.ContainsKey("color")) group.GroupColor = GetColor(input, "color");
+					return Done($"Group {group.Id} is now \"{group.Name}\" ({Rgb(group.GroupColor)}).");
+				})
+			{
+				Describe = input =>
+				{
+					var group = Group(GetInt(input, "group_id"));
+					var changes = new List<string>();
+					if (input.ContainsKey("name")) changes.Add($"rename it to \"{GetString(input, "name")}\"");
+					if (input.ContainsKey("color")) changes.Add($"color it {Rgb(GetColor(input, "color"))}");
+					return Task.FromResult($"Group \"{group.Name}\": {string.Join(", ", changes)}");
+				},
+			},
+
+			new("remove_group", "Remove group", AiToolKind.Action,
+				"Remove a tab group. By default its tabs stay open, ungrouped; with close_tabs they are closed too.",
+				Props(("group_id", groupId), ("close_tabs", Prop("boolean", "Close the group's tabs as well. Default false."))), ["group_id"],
+				input =>
+				{
+					var group = Group(GetInt(input, "group_id"));
+					var count = group.Tabs.Count;
+					if (GetBool(input, "close_tabs"))
+					{
+						tabs.RemoveGroup(group.Id);
+						return Done($"Removed group \"{group.Name}\" and closed its {count} tab(s).");
+					}
+					tabs.DissolveGroup(group);
+					return Done($"Removed group \"{group.Name}\"; its {count} tab(s) are now ungrouped.");
+				})
+			{
+				Describe = input =>
+				{
+					var group = Group(GetInt(input, "group_id"));
+					return Task.FromResult(GetBool(input, "close_tabs")
+						? $"Remove group \"{group.Name}\" and close its {group.Tabs.Count} tab(s)"
+						: $"Remove group \"{group.Name}\" (its tabs stay open)");
 				},
 			},
 			#endregion
@@ -348,18 +534,37 @@ public static class BrowserTools
 		? JsonSerializer.SerializeToElement(new { type, description })
 		: JsonSerializer.SerializeToElement(new { type, description, @enum = values });
 
+	private static JsonElement ArrayProp(string itemType, string description) =>
+		JsonSerializer.SerializeToElement(new { type = "array", items = new { type = itemType }, description });
+
 	private static Dictionary<string, JsonElement> Props(params (string Name, JsonElement Schema)[] properties) =>
 		properties.ToDictionary(p => p.Name, p => p.Schema);
 
 	// tool input isn't validated upstream (it streams in as the model writes it), so check it here
 	internal static int GetInt(IReadOnlyDictionary<string, JsonElement> input, string name)
 	{
+		if (input.TryGetValue(name, out var value) && ToInt(value) is { } number) return number;
+		throw new AiToolException($"'{name}' must be an integer.");
+	}
+
+	private static int? ToInt(JsonElement value) =>
+		value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) ? number
+		: value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out number) ? number
+		: null;
+
+	/// <summary>A list of integers; a single number is taken as a list of one.</summary>
+	private static List<int> GetIntArray(IReadOnlyDictionary<string, JsonElement> input, string name)
+	{
 		if (input.TryGetValue(name, out var value))
 		{
-			if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)) return number;
-			if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out number)) return number;
+			if (ToInt(value) is { } single) return [single];
+			if (value.ValueKind == JsonValueKind.Array)
+			{
+				var items = value.EnumerateArray().Select(ToInt).ToList();
+				if (items.Count > 0 && items.All(i => i is not null)) return items.Select(i => i!.Value).Distinct().ToList();
+			}
 		}
-		throw new AiToolException($"'{name}' must be an integer.");
+		throw new AiToolException($"'{name}' must be a non-empty list of integers.");
 	}
 
 	internal static string GetString(IReadOnlyDictionary<string, JsonElement> input, string name, bool allowEmpty = false) =>
@@ -371,5 +576,31 @@ public static class BrowserTools
 		input.TryGetValue(name, out var value) && (value.ValueKind == JsonValueKind.True || (value.ValueKind == JsonValueKind.String && value.GetString() == "true"));
 
 	private static string Truncate(string text, int max) => text.Length > max ? text[..max] + $"\n…({text.Length - max:N0} more characters cut)" : text;
+
+	private static string Rgb(Color color) => $"rgb {color.R}, {color.G}, {color.B}";
+
+	private static JsonElement ColorProp(string description)
+	{
+		var channel = new { type = "integer", minimum = 0, maximum = 255 };
+		return JsonSerializer.SerializeToElement(new
+		{
+			type = "object",
+			description,
+			properties = new { r = channel, g = channel, b = channel },
+			required = new[] { "r", "g", "b" },
+		});
+	}
+
+	/// <summary>A color given as <c>{ "r": 173, "g": 216, "b": 230 }</c>, each channel 0-255.</summary>
+	private static Color GetColor(IReadOnlyDictionary<string, JsonElement> input, string name)
+	{
+		if (input.TryGetValue(name, out var value) && value.ValueKind == JsonValueKind.Object)
+		{
+			byte? Channel(string key) => value.TryGetProperty(key, out var c) && ToInt(c) is int v and >= 0 and <= 255 ? (byte)v : null;
+			if (Channel("r") is { } r && Channel("g") is { } g && Channel("b") is { } b)
+				return Color.FromArgb(255, r, g, b);
+		}
+		throw new AiToolException($"'{name}' must be {{ \"r\": 0-255, \"g\": 0-255, \"b\": 0-255 }}.");
+	}
 	#endregion
 }

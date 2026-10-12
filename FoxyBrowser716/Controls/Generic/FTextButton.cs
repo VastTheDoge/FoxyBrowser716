@@ -58,9 +58,9 @@ public sealed partial class FTextButton : ContentControl
         var control = (FTextButton)d;
         control.Background = new SolidColorBrush(control.ForceHighlight 
             ? control.CurrentTheme.PrimaryHighlightColor 
-            : control.PointerOver 
-                ? control.CurrentTheme.PrimaryAccentColorVeryTransparent 
-                : control.CurrentTheme.PrimaryAccentColorSlightTransparent);
+            : control.PointerOver
+                ? control.CurrentTheme.PrimaryAccentColorSlightTransparent
+                : control.CurrentTheme.PrimaryAccentColorVeryTransparent);
     }
 
     public static readonly DependencyProperty CurrentThemeProperty = DependencyProperty.Register(

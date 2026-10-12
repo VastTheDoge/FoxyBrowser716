@@ -5,15 +5,31 @@ using FoxyBrowser716.DataObjects.Settings;
 
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
-/// <summary>Which service the assistant panel talks to. Each has its own settings in the AI Assistant category.</summary>
+/// <summary>Which service a model runs on. Each has its own settings in the panel's settings view.</summary>
 public enum AiProviderKind
 {
 	[Description("Claude")] Claude,
 	[Description("OpenAI-compatible")] OpenAiCompatible,
 }
 
+/// <summary>A model on a provider, as picked in the panel's model menu and stored in settings.</summary>
+public sealed record AiModelChoice(AiProviderKind Provider, string Model)
+{
+	public static AiModelChoice Default => new(AiProviderKind.Claude, ClaudeConversation.DefaultModel);
+
+	/// <summary>The default small model for quick jobs such as naming tab groups.</summary>
+	public static AiModelChoice DefaultQuick => new(AiProviderKind.Claude, ClaudeConversation.QuickModel);
+}
+
 /// <summary>How hard the model thinks before answering (Claude's <c>output_config.effort</c>).</summary>
-public enum AiEffort { Low, Medium, High, Max }
+public enum AiEffort
+{
+	Low,
+	Medium,
+	High,
+	[Description("Extra high")] XHigh,
+	Max,
+}
 
 public enum AiRole { User, Assistant }
 
@@ -28,6 +44,12 @@ public enum AiToolKind
 	Script,
 }
 
+/// <summary>What a tool hands back to the model: text, plus an image for tools that look at the screen.</summary>
+public sealed record AiToolOutput(string Text, byte[]? Image = null, string ImageMediaType = "image/jpeg")
+{
+	public static implicit operator AiToolOutput(string text) => new(text);
+}
+
 /// <summary>A tool the assistant can call. The schema is plain JSON Schema so every provider can send it as-is.</summary>
 /// <param name="Title">Short human name, for settings and approval cards.</param>
 /// <param name="Execute">Runs on the UI thread. Throw <see cref="AiToolException"/> to hand the model an error result.</param>
@@ -38,8 +60,11 @@ public sealed record AiTool(
 	string Description,
 	IReadOnlyDictionary<string, JsonElement> Properties,
 	IReadOnlyList<string> Required,
-	Func<IReadOnlyDictionary<string, JsonElement>, Task<string>> Execute)
+	Func<IReadOnlyDictionary<string, JsonElement>, Task<AiToolOutput>> Execute)
 {
+	/// <summary>Returns an image, so it's only offered to providers that can send images back to the model (Claude).</summary>
+	public bool ReturnsImage { get; init; }
+
 	/// <summary>
 	/// Plain-language summary of one call for the approval card ("Click button "Buy" on example.com"). May throw
 	/// <see cref="AiToolException"/> (e.g. a stale element ref) to fail the call before the user is asked.
@@ -87,8 +112,8 @@ public sealed class AiToolException(string message) : Exception(message);
 /// One chat's history in the provider's own wire format, so nothing is lost converting between providers
 /// (Claude's thinking blocks must be sent back unchanged). History is append-only: a turn that fails or is
 /// refused is rolled back whole, so the next request always extends what was sent before.
-/// Connection settings (key, model, effort, URL) are read fresh on every turn, so fixing a key in
-/// settings takes effect without starting a new chat.
+/// The model and effort come with each turn (the chat can switch models within its provider), and connection
+/// settings (key, URL) are read fresh every turn, so fixing a key takes effect without starting a new chat.
 /// </summary>
 public abstract class AiConversation
 {
@@ -108,21 +133,31 @@ public abstract class AiConversation
 
 	public abstract AiProviderKind Kind { get; }
 
-	/// <summary>The model the next turn will use, for display.</summary>
-	public abstract string CurrentModel { get; }
-
 	/// <summary>Sends <paramref name="userMessage"/>, runs any tool calls, and streams the reply through <paramref name="callbacks"/>.</summary>
-	public abstract Task SendAsync(string userMessage, AiTurnCallbacks callbacks, CancellationToken cancellationToken = default);
+	/// <param name="effort">Ignored by providers without an effort setting.</param>
+	public abstract Task SendAsync(string userMessage, string model, AiEffort effort, AiTurnCallbacks callbacks, CancellationToken cancellationToken = default);
 
 	public static AiConversation Create(AiProviderKind kind, Func<BrowserSettings> settings, string systemPrompt, IReadOnlyList<AiTool> tools) => kind switch
 	{
 		AiProviderKind.Claude => new ClaudeConversation(settings, systemPrompt, tools),
-		AiProviderKind.OpenAiCompatible => new OpenAiCompatibleConversation(settings, systemPrompt, tools),
+		AiProviderKind.OpenAiCompatible => new OpenAiCompatibleConversation(settings, systemPrompt, tools.Where(t => !t.ReturnsImage).ToList()),
 		_ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
 	};
 
+	/// <summary>
+	/// One question, one short answer, no tools or history: for small jobs like naming a tab group. Returns the
+	/// reply text and what it cost.
+	/// </summary>
+	public static Task<(string Text, AiUsage Usage)> CompleteAsync(AiModelChoice model, BrowserSettings settings, string system, string prompt, CancellationToken cancellationToken = default) =>
+		model.Provider switch
+		{
+			AiProviderKind.Claude => ClaudeConversation.CompleteAsync(model.Model, system, prompt, cancellationToken),
+			AiProviderKind.OpenAiCompatible => OpenAiCompatibleConversation.CompleteAsync(settings, model.Model, system, prompt, cancellationToken),
+			_ => throw new ArgumentOutOfRangeException(nameof(model), model.Provider, null),
+		};
+
 	/// <summary>Runs a tool by name; failures become an error result for the model rather than an exception.</summary>
-	protected async Task<(string Content, bool IsError)> RunToolAsync(string name, IReadOnlyDictionary<string, JsonElement> input)
+	protected async Task<(AiToolOutput Output, bool IsError)> RunToolAsync(string name, IReadOnlyDictionary<string, JsonElement> input)
 	{
 		if (Tools.FirstOrDefault(t => t.Name == name) is not { } tool)
 			return ($"Unknown tool '{name}'.", true);

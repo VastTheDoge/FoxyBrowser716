@@ -13,7 +13,7 @@ namespace FoxyBrowser716.DataObjects.Complex.Ai;
 internal static class PageAgent
 {
 	/// <summary>Bump when the script changes: pages that already have an older copy reinstall it.</summary>
-	private const int Version = 1;
+	private const int Version = 2;
 
 	// Runs in the page's main world. Refs are stable for an element's lifetime (WeakMap), so re-reading a page
 	// keeps the same ids; a navigation starts a fresh map. Nothing here sends data anywhere.
@@ -128,6 +128,21 @@ internal static class PageAgent
 		      const role = shown ? roleOf(el) : null;
 		      const block = !/^(inline|contents|table-cell)/.test(s.display);
 		      if (role) { out.push(block ? '\n' : ' ', control(el, role), block ? '\n' : ' '); return; }
+		      // no text but a tooltip or label (status bars, icon-only badges): what a sighted user would see on hover
+		      if (shown && n !== 'td' && n !== 'th' && (el.hasAttribute('title') || el.hasAttribute('aria-label')) && !clean(el.textContent) && !el.querySelector('img[alt]:not([alt=""])')) {
+		        const label = clean(el.getAttribute('aria-label')) || clean(el.getAttribute('title'));
+		        const r = el.getBoundingClientRect();
+		        if (label && r.width > 0 && r.height > 0) out.push(block ? '\n' : ' ', `[label: ${q(cut(label, 200))}]`, block ? '\n' : ' ');
+		        return;
+		      }
+		      if (n === 'table') {
+		        out.push('\n'); children(el);
+		        // collapsed tables (Wikipedia's [show]) and filtered lists keep their rows in the DOM, hidden
+		        const rows = el.rows.length < 5000 ? [...el.rows] : [];
+		        const hidden = rows.filter(r => css(r).display === 'none').length;
+		        if (hidden) out.push(`\n(${hidden} more row${hidden > 1 ? 's' : ''} hidden: the table is collapsed or filtered; look for a show/expand control)\n`);
+		        out.push('\n'); return;
+		      }
 		      const h = /^h([1-6])$/.exec(n);
 		      if (h || n === 'li' || n === 'tr') {
 		        // rendered on their own, so empty ones (closed menus) disappear and rows/headings stay on one line
@@ -147,18 +162,23 @@ internal static class PageAgent
 		    }
 		    walk(root);
 
-		    // one element per line, no blank lines except before headings: blank lines cost tokens and say nothing
+		    // one element per line, no blank lines except before headings: blank lines cost tokens and say nothing.
+		    // Runs of the same line (repeated items, separators) become one line with a count.
 		    const lines = [];
-		    let fence = false;
+		    let fence = false, prev = null, repeat = 0;
+		    const flush = () => { if (repeat > 1) lines[lines.length - 1] += ` (\u00d7${repeat})`; repeat = 0; };
 		    for (let line of out.join('').split('\n')) {
 		      if (line === '```') fence = !fence;
 		      if (!fence) {
 		        line = line.replace(/[ \t\u00a0]+/g, ' ').trim();
 		        if (!line) continue;
+		        if (line === prev) { repeat++; continue; }
+		        flush(); prev = line; repeat = 1;
 		        if (line.startsWith('#') && lines.length) lines.push('');
-		      }
+		      } else { flush(); prev = null; }
 		      lines.push(line);
 		    }
+		    flush();
 		    return lines.join('\n').slice(0, 600000);
 		  }
 
@@ -180,6 +200,8 @@ internal static class PageAgent
 		  return {
 		    v: VERSION,
 		    read(start, max) {
+		      // mid-navigation the new document can be empty for a moment
+		      if (!document.documentElement) return { title: '', url: location.href, total: 0, start: 0, end: 0, text: '', loading: true, empty: true };
 		      const text = page(!start);
 		      start = Math.max(0, Math.min(start | 0, text.length));
 		      let end = Math.min(text.length, start + max);
@@ -187,6 +209,7 @@ internal static class PageAgent
 		      return { title: document.title, url: location.href, total: text.length, start, end, text: text.slice(start, end), loading: document.readyState !== 'complete' };
 		    },
 		    find(query) {
+		      if (!document.documentElement) return { title: '', url: location.href, total: 0, count: 0, matches: [], loading: true };
 		      const text = page(true), needle = String(query).toLowerCase(), matches = [];
 		      let offset = 0, count = 0;
 		      for (const line of text.split('\n')) {
@@ -205,6 +228,7 @@ internal static class PageAgent
 		    target(ref) {
 		      const el = byRef(ref); if (!el) return gone;
 		      changed();
+		      if (el.disabled || el.getAttribute('aria-disabled') === 'true') return { error: 'disabled', desc: describe(el) };
 		      el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
 		      const r = el.getBoundingClientRect();
 		      if (r.width < 1 || r.height < 1) return { error: 'invisible', desc: describe(el) };
@@ -294,6 +318,69 @@ internal static class PageAgent
 			}
 			await Task.Delay(250);
 		}
+	}
+
+	/// <summary>
+	/// Runs <paramref name="action"/> (a click, a key, a navigation) and, if it starts a navigation, waits for the new
+	/// page to finish loading, up to <paramref name="timeout"/>. Returns whether a navigation happened.
+	/// </summary>
+	public static async Task<bool> RunAndWaitForNavigation(CoreWebView2 core, Func<Task> action, TimeSpan timeout)
+	{
+		var started = false;
+		var completed = new TaskCompletionSource();
+		void OnStarting(CoreWebView2 _, CoreWebView2NavigationStartingEventArgs __) => started = true;
+		void OnCompleted(CoreWebView2 _, CoreWebView2NavigationCompletedEventArgs __) => completed.TrySetResult();
+
+		core.NavigationStarting += OnStarting;
+		core.NavigationCompleted += OnCompleted;
+		try
+		{
+			await action();
+			// lets the page react (navigation start, menus opening) before reporting where things stand
+			await Task.Delay(400);
+			if (started) await Task.WhenAny(completed.Task, Task.Delay(timeout));
+			return started;
+		}
+		finally
+		{
+			core.NavigationStarting -= OnStarting;
+			core.NavigationCompleted -= OnCompleted;
+		}
+	}
+
+	/// <summary>Longest side of a screenshot sent to the model; bigger costs more tokens and doesn't read better.</summary>
+	private const int ScreenshotMaxWidth = 1280;
+
+	/// <summary>
+	/// A JPEG of what the tab shows right now (the visible part of the page, scaled to at most
+	/// <see cref="ScreenshotMaxWidth"/> pixels wide). A tab that isn't on screen may not paint, so this can time out.
+	/// </summary>
+	public static async Task<byte[]> Screenshot(CoreWebView2 core, TimeSpan timeout)
+	{
+		var metrics = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Page.getLayoutMetrics", "{}")).RootElement;
+		var viewport = metrics.GetProperty("cssVisualViewport");
+		var width = viewport.GetProperty("clientWidth").GetDouble();
+		var height = viewport.GetProperty("clientHeight").GetDouble();
+		var dpr = double.TryParse(await core.ExecuteScriptAsync("devicePixelRatio"), NumberStyles.Float, CultureInfo.InvariantCulture, out var ratio) && ratio > 0 ? ratio : 1;
+
+		var call = core.CallDevToolsProtocolMethodAsync("Page.captureScreenshot", JsonSerializer.Serialize(new
+		{
+			format = "jpeg",
+			quality = 70,
+			clip = new
+			{
+				x = viewport.GetProperty("pageX").GetDouble(),
+				y = viewport.GetProperty("pageY").GetDouble(),
+				width,
+				height,
+				scale = Math.Min(1, ScreenshotMaxWidth / (width * dpr)),
+			},
+		})).AsTask();
+
+		if (await Task.WhenAny(call, Task.Delay(timeout)) != call)
+			throw new AiToolException("The screenshot timed out. The tab may need to be on screen: switch_to_tab first, then try again.");
+
+		return Convert.FromBase64String(JsonDocument.Parse(await call).RootElement.GetProperty("data").GetString() ?? "");
 	}
 
 	#region Input (DevTools protocol)

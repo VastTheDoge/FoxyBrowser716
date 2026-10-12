@@ -67,6 +67,17 @@ public abstract class BaseSettingControl : ThemedUserControl
 	protected TextBlock DescriptionBlock;
 	protected StackPanel LeftPanel;
 
+	/// <summary>Width of the text boxes and drop-downs beside a setting; they scroll inside rather than grow.</summary>
+	protected const double EntryWidth = 260;
+
+	/// <summary>Room the title and description keep beside the control; with less, the control moves under them.</summary>
+	private const double MinTextWidth = 200;
+	private const double ControlGap = 16;
+
+	private FrameworkElement? _rightControl;
+	private HorizontalAlignment _rightAlignment;
+	private bool _stacked;
+
 	protected BaseSettingControl(string title, string description, Theme currentTheme)
 	{
 		InitializeLayout(title, description);
@@ -81,6 +92,11 @@ public abstract class BaseSettingControl : ThemedUserControl
 			{
 				new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
 				new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) }
+			},
+			RowDefinitions =
+			{
+				new RowDefinition { Height = GridLength.Auto },
+				new RowDefinition { Height = GridLength.Auto },
 			}
 		};
 
@@ -118,10 +134,40 @@ public abstract class BaseSettingControl : ThemedUserControl
 
 	protected void AddControlToRight(FrameworkElement control)
 	{
+		_rightControl = control;
+		_rightAlignment = control.HorizontalAlignment;
 		Grid.SetColumn(control, 1);
 		control.VerticalAlignment = VerticalAlignment.Center;
-		control.Margin = new Thickness(16, 0, 0, 0);
+		control.Margin = new Thickness(ControlGap, 0, 0, 0);
 		MainGrid.Children.Add(control);
+	}
+
+	protected override Size MeasureOverride(Size availableSize)
+	{
+		if (_rightControl is not null)
+		{
+			// the control's own width, with nothing squeezing it
+			_rightControl.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+			var controlWidth = _rightControl.DesiredSize.Width - _rightControl.Margin.Left - _rightControl.Margin.Right;
+			SetStacked(availableSize.Width < controlWidth + ControlGap + MinTextWidth);
+		}
+
+		return base.MeasureOverride(availableSize);
+	}
+
+	/// <summary>
+	/// Puts the control under the description instead of beside it, so a narrow page doesn't squeeze the
+	/// description into a column one word wide.
+	/// </summary>
+	private void SetStacked(bool stacked)
+	{
+		if (_rightControl is null || stacked == _stacked) return;
+		_stacked = stacked;
+
+		Grid.SetRow(_rightControl, stacked ? 1 : 0);
+		Grid.SetColumn(_rightControl, stacked ? 0 : 1);
+		_rightControl.HorizontalAlignment = stacked ? HorizontalAlignment.Left : _rightAlignment;
+		_rightControl.Margin = stacked ? new Thickness(0, 8, 0, 0) : new Thickness(ControlGap, 0, 0, 0);
 	}
 
 	protected void AddControlBelow(FrameworkElement control)
@@ -398,11 +444,7 @@ public class StringSettingControl : BaseSettingControl
 
 	private void InitializeStringControl()
 	{
-		textBox = new FTextInput
-		{
-			MinWidth = 200
-		};
-		
+		textBox = new FTextInput();
 		textBox.Text = setting.Value;
 
 		textBox.OnTextChanged += (s) =>
@@ -410,7 +452,21 @@ public class StringSettingControl : BaseSettingControl
 			setting.Value = s;
 		};
 
-		AddControlToRight(textBox);
+		if (setting.Multiline)
+		{
+			textBox.Multiline = true;
+			textBox.MinWidth = EntryWidth;
+			textBox.MinHeight = 64;
+			textBox.MaxHeight = 160;
+			textBox.HorizontalAlignment = HorizontalAlignment.Stretch;
+			AddControlBelow(textBox);
+		}
+		else
+		{
+			textBox.AcceptsReturn = false;
+			textBox.Width = EntryWidth;
+			AddControlToRight(textBox);
+		}
 	}
 
 	protected override void ApplyTheme()
@@ -424,12 +480,14 @@ public class StringSettingControl : BaseSettingControl
 public class SecretSettingControl : BaseSettingControl
 {
 	private readonly PasswordBox passwordBox;
+	private readonly FTextButton? testButton;
+	private readonly TextBlock? status;
 
 	public SecretSettingControl(SecretSetting secretSetting) : base(secretSetting.Name, secretSetting.Description, DefaultThemes.DarkMode)
 	{
 		passwordBox = new PasswordBox
 		{
-			MinWidth = 200,
+			Width = secretSetting.Test is null ? EntryWidth : EntryWidth - 60,
 			Password = secretSetting.Value,
 			PlaceholderText = "Not set",
 			CornerRadius = new CornerRadius(5),
@@ -438,9 +496,32 @@ public class SecretSettingControl : BaseSettingControl
 			MinHeight = 28,
 		};
 
-		passwordBox.PasswordChanged += (_, _) => secretSetting.Value = passwordBox.Password;
+		// saved when the box is left or Enter is pressed, not per keystroke, so a half-typed key is never stored
+		void Commit()
+		{
+			if (passwordBox.Password != secretSetting.Value) secretSetting.Value = passwordBox.Password;
+		}
+		passwordBox.LostFocus += (_, _) => Commit();
+		passwordBox.KeyDown += (_, e) =>
+		{
+			if (e.Key == Windows.System.VirtualKey.Enter) Commit();
+		};
 
-		AddControlToRight(passwordBox);
+		if (secretSetting.Test is { } test)
+		{
+			status = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
+			testButton = new FTextButton { ButtonText = "Test", Height = 28, Width = 54, CornerRadius = new CornerRadius(5) };
+			testButton.OnClick += async (_, _) =>
+			{
+				Commit();
+				status.Text = "Checking…";
+				status.Text = await test();
+			};
+			AddControlToRight(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { passwordBox, testButton } });
+			AddControlBelow(status);
+		}
+		else
+			AddControlToRight(passwordBox);
 		ApplyTheme();
 	}
 
@@ -448,71 +529,32 @@ public class SecretSettingControl : BaseSettingControl
 	{
 		base.ApplyTheme();
 		if (passwordBox is not null) FoxyBrowser716.Controls.WebUi.WebUiStyle.ThemePasswordBox(passwordBox, CurrentTheme);
+		if (testButton is not null) testButton.CurrentTheme = CurrentTheme;
+		if (status is not null) status.Foreground = new SolidColorBrush(CurrentTheme.SecondaryForegroundColor);
 	}
 }
 
 public class ComboSettingControl : BaseSettingControl
 {
-	private readonly ComboSetting setting;
-	private StackPanel optionsPanel;
-	private readonly List<FTextButton> optionButtons = new();
+	private readonly FDropdown dropdown;
 
-	public ComboSettingControl(ComboSetting comboSetting) : base(comboSetting.Name, comboSetting.Description, DefaultThemes.DarkMode)
+	public ComboSettingControl(ComboSetting setting) : base(setting.Name, setting.Description, DefaultThemes.DarkMode)
 	{
-		setting = comboSetting;
-		InitializeComboControl();
-	}
-
-	private void InitializeComboControl()
-	{
-		// a few short options (Ask/Allow/Block, Auto/Light/Dark) read better side by side, like the On/Off pair
-		var horizontal = setting.Options.Length <= 4 && setting.Options.All(o => o.name.Length <= 12);
-
-		optionsPanel = new StackPanel
+		dropdown = new FDropdown
 		{
-			Orientation = horizontal ? Orientation.Horizontal : Orientation.Vertical,
-			Spacing = horizontal ? 2 : 6
+			Width = EntryWidth,
+			Options = setting.Options.Select(o => o.name).ToArray(),
+			SelectedIndex = Array.FindIndex(setting.Options, o => o.id == setting.Value),
 		};
+		dropdown.SelectionChanged += i => setting.Value = setting.Options[i].id;
 
-		foreach (var (name, id) in setting.Options)
-		{
-			var btn = new FTextButton
-			{
-				ButtonText = name,
-				HorizontalAlignment = HorizontalAlignment.Stretch,
-				MinWidth = horizontal ? 0 : 180,
-				CornerRadius = new CornerRadius(5),
-				Margin = new Thickness(2),
-			};
-			btn.OnClick += (_, _) =>
-			{
-				setting.Value = id;
-				UpdateSelection();
-			};
-			optionButtons.Add(btn);
-			optionsPanel.Children.Add(btn);
-		}
-
-		UpdateSelection();
-		AddControlToRight(optionsPanel);
-	}
-
-	private void UpdateSelection()
-	{
-		for (int i = 0; i < optionButtons.Count; i++)
-		{
-			var id = setting.Options[i].id;
-			optionButtons[i].ForceHighlight = (id == setting.Value);
-		}
+		AddControlToRight(dropdown);
 	}
 
 	protected override void ApplyTheme()
 	{
 		base.ApplyTheme();
-		foreach (var btn in optionButtons)
-		{
-			btn.CurrentTheme = CurrentTheme;
-		}
+		dropdown.CurrentTheme = CurrentTheme;
 	}
 }
 
@@ -587,7 +629,8 @@ public class FilePickerSettingControl : BaseSettingControl
 
 		pathTextBox = new FTextInput()
 		{
-			MinWidth = 172,
+			Width = EntryWidth - 36, // leaves room for the browse button
+			AcceptsReturn = false,
 			Margin = new Thickness(2, 2, 0, 2)
 		};
 		pathTextBox.Text = setting.Value;
@@ -630,6 +673,7 @@ public class FilePickerSettingControl : BaseSettingControl
 	{
 		base.ApplyTheme();
 		if (browseButton != null) browseButton.CurrentTheme = CurrentTheme;
+		if (pathTextBox != null) pathTextBox.CurrentTheme = CurrentTheme;
 	}
 }
 
@@ -753,7 +797,8 @@ public class FolderPickerSettingControl : BaseSettingControl
 
 		pathTextBox = new FTextInput()
 		{
-			MinWidth = 172,
+			Width = EntryWidth - 36, // leaves room for the browse button
+			AcceptsReturn = false,
 			Margin = new Thickness(2, 2, 0, 2)
 		};
 		pathTextBox.Text = setting.Value;

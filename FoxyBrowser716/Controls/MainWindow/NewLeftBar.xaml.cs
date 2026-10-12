@@ -439,7 +439,8 @@ public sealed partial class NewLeftBar : UserControl
                     cursorPosition.X = lpPoint.X;
                     cursorPosition.Y = lpPoint.Y;
                     
-                    TabManager?.CreateWindowWithTab(tab, new Rect(cursorPosition, new Size(250, 100)));
+                    var scale = XamlRoot?.RasterizationScale ?? 1.0;
+                    TabManager?.CreateWindowWithTab(tab, new Rect(cursorPosition, new Size(250 * scale, 100 * scale)));
                 }
                 else
                     throw new Exception("Failed to get cursor position for drop operation outside app.");
@@ -460,7 +461,8 @@ public sealed partial class NewLeftBar : UserControl
                     cursorPosition.X = lpPoint.X;
                     cursorPosition.Y = lpPoint.Y;
                     
-                    TabManager?.CreateWindowWithGroup(group, new Rect(cursorPosition, new Size(250, 100)));
+                    var scale = XamlRoot?.RasterizationScale ?? 1.0;
+                    TabManager?.CreateWindowWithGroup(group, new Rect(cursorPosition, new Size(250 * scale, 100 * scale)));
                 }
             }
         }

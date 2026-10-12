@@ -143,6 +143,7 @@ public partial class Instance : ObservableObject
 		if (DefaultThemeObject.Themes.TryGetValue(Settings.ThemeName, out var theme)) CurrentTheme = theme;
 	}
 	
+	/// <param name="startLocation">Window bounds in physical screen pixels, see <see cref="MainWindow.ApplyBounds"/>.</param>
 	public async Task<MainWindow> CreateWindow(string[]? urls = null, Rect? startLocation = null, MainWindow.BrowserWindowState windowState = MainWindow.BrowserWindowState.Normal)
 	{
 		try
@@ -152,10 +153,7 @@ public partial class Instance : ObservableObject
 			Focused?.Invoke(this);
 
 			if (startLocation is { } sl)
-			{
-				newWindow.MoveAndResize(sl.X, sl.Y, sl.Width, sl.Height);
-				;
-			}
+				newWindow.ApplyBounds(sl);
 			
 			Windows.AddFirst(newWindow);
 			newWindow.Activated += (s, e) =>

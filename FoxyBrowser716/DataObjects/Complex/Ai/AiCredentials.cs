@@ -26,6 +26,18 @@ public static class AiCredentials
 		}
 	}
 
+	/// <summary>
+	/// The key's start, end and length, never the whole thing: enough to compare against the Console and spot a
+	/// wrong or cut-off paste. "sk-ant-api03-…x9Qk (108 characters)".
+	/// </summary>
+	public static string Mask(string? key)
+	{
+		if (string.IsNullOrEmpty(key)) return "no key";
+		return key.Length <= 20
+			? $"{key.Length} characters"
+			: $"{key[..13]}…{key[^4..]} ({key.Length} characters)";
+	}
+
 	/// <summary>Saves the key, or removes it when <paramref name="key"/> is empty.</summary>
 	public static void Set(AiProviderKind provider, string? key)
 	{

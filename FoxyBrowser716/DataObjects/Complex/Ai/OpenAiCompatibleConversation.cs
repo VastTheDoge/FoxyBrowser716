@@ -25,17 +25,22 @@ internal sealed class OpenAiCompatibleConversation : AiConversation
 
 	public override AiProviderKind Kind => AiProviderKind.OpenAiCompatible;
 
-	public override string CurrentModel => Settings().OpenAiModel?.Trim() ?? string.Empty;
-
-	public override async Task SendAsync(string userMessage, AiTurnCallbacks callbacks, CancellationToken cancellationToken = default)
+	/// <summary>The server's address plus <paramref name="path"/>, or a message saying to set it.</summary>
+	private static Uri Endpoint(BrowserSettings settings, string path)
 	{
-		var baseUrl = Settings().OpenAiBaseUrl?.Trim().TrimEnd('/');
-		if (string.IsNullOrEmpty(baseUrl) || !Uri.TryCreate(baseUrl + "/chat/completions", UriKind.Absolute, out var endpoint))
-			throw new AiNotConfiguredException("Set the OpenAI-compatible base URL in **Settings → AI Assistant**, for example `https://api.openai.com/v1`.");
+		var baseUrl = settings.OpenAiBaseUrl?.Trim().TrimEnd('/');
+		if (string.IsNullOrEmpty(baseUrl) || !Uri.TryCreate(baseUrl + path, UriKind.Absolute, out var endpoint))
+			throw new AiNotConfiguredException("Set the OpenAI-compatible base URL in the assistant's settings (the gear at the top of this panel), for example `https://api.openai.com/v1`.");
+		return endpoint;
+	}
 
-		var model = CurrentModel;
+	public override async Task SendAsync(string userMessage, string model, AiEffort effort, AiTurnCallbacks callbacks, CancellationToken cancellationToken = default)
+	{
+		var endpoint = Endpoint(Settings(), "/chat/completions");
+
+		model = model.Trim();
 		if (model.Length == 0)
-			throw new AiNotConfiguredException("Set the OpenAI-compatible model in **Settings → AI Assistant**.");
+			throw new AiNotConfiguredException("Pick a model for the OpenAI-compatible server in the model menu at the top of this panel.");
 
 		var key = AiCredentials.Get(AiProviderKind.OpenAiCompatible); // optional: local servers usually don't need one
 
@@ -52,14 +57,14 @@ internal sealed class OpenAiCompatibleConversation : AiConversation
 				foreach (var call in toolCalls)
 				{
 					callbacks.ToolCall?.Invoke(call.Name);
-					var (result, isError) = ParseArguments(call.Arguments) is { } input
+					var (output, isError) = ParseArguments(call.Arguments) is { } input
 						? await RunToolAsync(call.Name, input)
 						: ("The arguments were not valid JSON.", true);
 					_messages.Add(new JsonObject
 					{
 						["role"] = "tool",
 						["tool_call_id"] = call.Id,
-						["content"] = isError ? $"Error: {result}" : result,
+						["content"] = isError ? $"Error: {output.Text}" : output.Text,
 					});
 				}
 			}
@@ -179,6 +184,74 @@ internal sealed class OpenAiCompatibleConversation : AiConversation
 		}
 
 		return (message, toolCalls);
+	}
+
+	private static HttpRequestMessage Request(HttpMethod method, Uri endpoint, string? key, JsonObject? body = null)
+	{
+		var request = new HttpRequestMessage(method, endpoint);
+		if (body is not null) request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+		if (!string.IsNullOrEmpty(key)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+		return request;
+	}
+
+	/// <summary>The server's models (<c>GET /models</c>) as (id, id): these servers have no display names.</summary>
+	public static async Task<List<(string Id, string Name)>> ListModelsAsync(BrowserSettings settings, CancellationToken cancellationToken = default)
+	{
+		using var request = Request(HttpMethod.Get, Endpoint(settings, "/models"), AiCredentials.Get(AiProviderKind.OpenAiCompatible));
+		using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		timeout.CancelAfter(TimeSpan.FromSeconds(15));
+
+		using var response = await Http.SendAsync(request, timeout.Token);
+		var body = await response.Content.ReadAsStringAsync(timeout.Token);
+		if (!response.IsSuccessStatusCode)
+			throw new HttpRequestException($"{(int)response.StatusCode} {response.ReasonPhrase}: {ErrorMessage(body)}");
+
+		return (JsonNode.Parse(body)?["data"] as JsonArray ?? [])
+			.Select(m => m?["id"]?.ToString())
+			.OfType<string>()
+			.Where(id => id.Length > 0)
+			.Order(StringComparer.OrdinalIgnoreCase)
+			.Select(id => (id, id))
+			.ToList();
+	}
+
+	/// <summary>Checks the base URL and key by listing models. Returns a short status for the settings view.</summary>
+	public static async Task<string> TestAsync(BrowserSettings settings, CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var models = await ListModelsAsync(settings, cancellationToken);
+			return $"Connected: {models.Count} model(s).";
+		}
+		catch (Exception e)
+		{
+			return $"Couldn't connect: {e.Message}";
+		}
+	}
+
+	/// <summary>See <see cref="AiConversation.CompleteAsync"/>.</summary>
+	internal static async Task<(string Text, AiUsage Usage)> CompleteAsync(BrowserSettings settings, string model, string system, string prompt, CancellationToken cancellationToken)
+	{
+		using var request = Request(HttpMethod.Post, Endpoint(settings, "/chat/completions"), AiCredentials.Get(AiProviderKind.OpenAiCompatible), new JsonObject
+		{
+			["model"] = model,
+			["messages"] = new JsonArray(
+				new JsonObject { ["role"] = "system", ["content"] = system },
+				new JsonObject { ["role"] = "user", ["content"] = prompt }),
+		});
+
+		using var response = await Http.SendAsync(request, cancellationToken);
+		var body = await response.Content.ReadAsStringAsync(cancellationToken);
+		if (!response.IsSuccessStatusCode)
+			throw new HttpRequestException($"{(int)response.StatusCode} {response.ReasonPhrase}: {ErrorMessage(body)}");
+
+		var json = JsonNode.Parse(body);
+		var text = json?["choices"]?[0]?["message"]?["content"]?.ToString() ?? string.Empty;
+		var usage = json?["usage"];
+		return (text.Trim(), new AiUsage(
+			usage?["prompt_tokens"]?.GetValue<long>() ?? 0,
+			usage?["completion_tokens"]?.GetValue<long>() ?? 0,
+			0, 0, null));
 	}
 
 	private JsonArray BuildTools() => new(Tools.Select(t => (JsonNode)new JsonObject

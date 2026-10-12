@@ -84,6 +84,46 @@ public sealed partial class FTextInput : UserControl
 
     [ObservableProperty] private partial TextWrapping TextWrap { get; set; } = TextWrapping.NoWrap;
 
+    /// <summary>
+    /// A box for several lines: Enter adds a line, long lines wrap, and once the box hits its height
+    /// (give it a Height or MaxHeight) it scrolls up and down instead of growing.
+    /// </summary>
+    public bool Multiline
+    {
+        get => SearchBox.TextWrapping == TextWrapping.Wrap;
+        set
+        {
+            AcceptsReturn = value;
+            SearchBox.TextWrapping = value ? TextWrapping.Wrap : TextWrapping.NoWrap;
+            ScrollViewer.SetVerticalScrollMode(SearchBox, value ? ScrollMode.Enabled : ScrollMode.Auto);
+            ScrollViewer.SetVerticalScrollBarVisibility(SearchBox, value ? ScrollBarVisibility.Auto : ScrollBarVisibility.Hidden);
+        }
+    }
+
+    /// <summary>
+    /// For a <see cref="Multiline"/> box used to send something (the chat input): Enter raises
+    /// <see cref="EnterPressed"/> instead of adding a line, and Shift+Enter or Ctrl+Enter add a line.
+    /// </summary>
+    public bool SubmitOnEnter { get; set; }
+
+    private void SearchBox_OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (!SubmitOnEnter || e.Key != Windows.System.VirtualKey.Enter) return;
+        e.Handled = true;
+
+        static bool Down(Windows.System.VirtualKey key) =>
+            Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+
+        if (Down(Windows.System.VirtualKey.Shift) || Down(Windows.System.VirtualKey.Control))
+        {
+            var start = SearchBox.SelectionStart;
+            SearchBox.Text = SearchBox.Text.Remove(start, SearchBox.SelectionLength).Insert(start, "\r");
+            SearchBox.SelectionStart = start + 1;
+        }
+        else
+            EnterPressed?.Invoke();
+    }
+
     private static void PlaceHolderTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs? e)
     {
         var control = (FTextInput)d;
@@ -172,8 +212,8 @@ public sealed partial class FTextInput : UserControl
     private void SearchBox_OnKeyUp(object sender, KeyRoutedEventArgs e)
     {
         OnTextChanged?.Invoke(SearchBox.Text);
-        
-        if (e.Key == Windows.System.VirtualKey.Enter)
+
+        if (e.Key == Windows.System.VirtualKey.Enter && !SubmitOnEnter)
             EnterPressed?.Invoke();
     }
     

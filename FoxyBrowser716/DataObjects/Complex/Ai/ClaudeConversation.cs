@@ -1,7 +1,10 @@
+using System.Net;
 using System.Threading;
 using Anthropic;
+using Anthropic.Exceptions;
 using Anthropic.Helpers;
 using Anthropic.Models.Beta.Messages;
+using Anthropic.Models.Models;
 using FoxyBrowser716.DataObjects.Settings;
 
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
@@ -42,19 +45,28 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 		["claude-haiku-4-5"] = (1m, 5m, 0.10m),
 	};
 
+	/// <summary>The default small model for quick jobs (naming tab groups).</summary>
+	public const string QuickModel = "claude-haiku-5-5";
+
+	/// <summary>
+	/// Set explicitly: the SDK would otherwise take <c>ANTHROPIC_BASE_URL</c> from the environment, which a browser
+	/// launched from a developer shell may inherit (pointing it at a proxy that rejects the key).
+	/// </summary>
+	private const string BaseUrl = "https://api.anthropic.com";
+
+	private const string KeyMissing = "Add your Claude API key in the assistant's settings (the gear at the top of this panel). You can create one in the Claude Console (platform.claude.com).";
+
 	private readonly List<BetaMessageParam> _messages = [];
-	private AnthropicClient? _client;
-	private string? _clientKey;
+
+	private static AnthropicClient? _client;
+	private static string? _clientKey;
 
 	public override AiProviderKind Kind => AiProviderKind.Claude;
 
-	public override string CurrentModel => Settings().ClaudeModel is { } model && !string.IsNullOrWhiteSpace(model) ? model.Trim() : DefaultModel;
-
-	public override async Task SendAsync(string userMessage, AiTurnCallbacks callbacks, CancellationToken cancellationToken = default)
+	public override async Task SendAsync(string userMessage, string model, AiEffort effort, AiTurnCallbacks callbacks, CancellationToken cancellationToken = default)
 	{
 		var client = GetClient();
-		var model = CurrentModel;
-		var effort = Settings().ClaudeEffort;
+		model = string.IsNullOrWhiteSpace(model) ? DefaultModel : model.Trim();
 
 		var checkpoint = _messages.Count;
 		_messages.Add(new BetaMessageParam { Role = Role.User, Content = userMessage });
@@ -93,13 +105,18 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 				foreach (var toolUse in toolUses)
 				{
 					callbacks.ToolCall?.Invoke(toolUse.Name);
-					var (result, isError) = await RunToolAsync(toolUse.Name, toolUse.Input);
-					results.Add(new BetaToolResultBlockParam { ToolUseID = toolUse.ID, Content = result, IsError = isError });
+					var (output, isError) = await RunToolAsync(toolUse.Name, toolUse.Input);
+					results.Add(new BetaToolResultBlockParam { ToolUseID = toolUse.ID, Content = ToResultContent(output), IsError = isError });
 				}
 				_messages.Add(new BetaMessageParam { Role = Role.User, Content = results });
 			}
 
 			callbacks.Text?.Invoke($"\n\n*(Stopped after {MaxToolRounds} rounds of tool calls.)*");
+		}
+		catch (AnthropicApiException e) when (e.StatusCode == HttpStatusCode.Unauthorized)
+		{
+			_messages.RemoveRange(checkpoint, _messages.Count - checkpoint);
+			throw KeyRejected();
 		}
 		catch
 		{
@@ -108,17 +125,112 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 		}
 	}
 
-	private AnthropicClient GetClient()
+	private static BetaToolResultBlockParamContent ToResultContent(AiToolOutput output)
 	{
-		var key = AiCredentials.Get(AiProviderKind.Claude)
-			?? throw new AiNotConfiguredException("Add your Claude API key in **Settings → AI Assistant**. You can create one in the Claude Console (platform.claude.com).");
+		if (output.Image is not { } image) return output.Text;
+
+		List<Block> blocks = [];
+		if (output.Text.Length > 0) blocks.Add(new BetaTextBlockParam { Text = output.Text });
+		blocks.Add(new BetaImageBlockParam
+		{
+			Source = new BetaBase64ImageSource
+			{
+				Data = Convert.ToBase64String(image),
+				MediaType = output.ImageMediaType == "image/png" ? MediaType.ImagePng : MediaType.ImageJpeg,
+			},
+		});
+		return blocks;
+	}
+
+	/// <summary>The client for the saved key, shared by every chat; rebuilt when the key changes.</summary>
+	private static AnthropicClient GetClient()
+	{
+		var key = AiCredentials.Get(AiProviderKind.Claude) ?? throw new AiNotConfiguredException(KeyMissing);
 
 		if (_client is null || _clientKey != key)
 		{
-			_client = new AnthropicClient { ApiKey = key };
+			_client = new AnthropicClient { ApiKey = key, BaseUrl = BaseUrl };
 			_clientKey = key;
 		}
 		return _client;
+	}
+
+	/// <summary>A 401: says which key was sent (start, end and length only) so a wrong or cut-off paste is easy to spot.</summary>
+	private static AiNotConfiguredException KeyRejected() =>
+		new($"Claude rejected the saved API key ({AiCredentials.Mask(AiCredentials.Get(AiProviderKind.Claude))}). " +
+			"Check it in the assistant's settings (the gear at the top of this panel): it should be a Console API key starting with `sk-ant-api`.");
+
+	/// <summary>Checks the saved key with a cheap call (listing models). Returns a short status for the settings view.</summary>
+	public static async Task<string> TestKeyAsync(CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			await GetClient().Models.List(new ModelListParams { Limit = 1 }, cancellationToken);
+			return "Key works.";
+		}
+		catch (AiNotConfiguredException)
+		{
+			return "No key saved.";
+		}
+		catch (AnthropicApiException e) when (e.StatusCode == HttpStatusCode.Unauthorized)
+		{
+			return $"Rejected: {AiCredentials.Mask(AiCredentials.Get(AiProviderKind.Claude))} is not a valid API key.";
+		}
+		catch (Exception e)
+		{
+			return $"Couldn't check: {e.Message}";
+		}
+	}
+
+	/// <summary>The models this key can use, newest first, as (id, display name).</summary>
+	public static async Task<List<(string Id, string Name)>> ListModelsAsync(CancellationToken cancellationToken = default)
+	{
+		List<(string, string)> models = [];
+		try
+		{
+			var page = await GetClient().Models.List(new ModelListParams { Limit = 100 }, cancellationToken);
+			while (true)
+			{
+				models.AddRange(page.Items.Select(m => (m.ID, string.IsNullOrWhiteSpace(m.DisplayName) ? m.ID : m.DisplayName)));
+				if (!page.HasNext()) break;
+				page = await page.Next(cancellationToken);
+			}
+		}
+		catch (AnthropicApiException e) when (e.StatusCode == HttpStatusCode.Unauthorized)
+		{
+			throw KeyRejected();
+		}
+		return models;
+	}
+
+	/// <summary>See <see cref="AiConversation.CompleteAsync"/>.</summary>
+	internal static async Task<(string Text, AiUsage Usage)> CompleteAsync(string model, string system, string prompt, CancellationToken cancellationToken)
+	{
+		BetaMessage response;
+		try
+		{
+			response = await GetClient().Beta.Messages.Create(new MessageCreateParams
+			{
+				Model = model,
+				MaxTokens = 2000,
+				System = system,
+				Messages = [new BetaMessageParam { Role = Role.User, Content = prompt }],
+				Thinking = new BetaThinkingConfigAdaptive(),
+				OutputConfig = new BetaOutputConfig { Effort = Effort.Low },
+			}, cancellationToken);
+		}
+		catch (AnthropicApiException e) when (e.StatusCode == HttpStatusCode.Unauthorized)
+		{
+			throw KeyRejected();
+		}
+
+		if (response.StopReason?.Raw() == "refusal")
+			throw new InvalidOperationException("Claude declined this request.");
+
+		var text = new StringBuilder();
+		foreach (var block in response.Content)
+			if (block.TryPickText(out var t)) text.Append(t.Text);
+		return (text.ToString().Trim(), ToUsage(response));
 	}
 
 	private MessageCreateParams BuildParams(string model, AiEffort effort)
@@ -144,6 +256,7 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 				{
 					AiEffort.Low => Effort.Low,
 					AiEffort.High => Effort.High,
+					AiEffort.XHigh => Effort.Xhigh,
 					AiEffort.Max => Effort.Max,
 					_ => Effort.Medium,
 				},

@@ -10,3 +10,6 @@ settled belong in the relevant `Docs/architecture/*.md`, not here.
 - `home-widgets.md` — check the new home widgets in the running app; follow-ups.
 - `ai-assistant.md` — run the new Claude / OpenAI-compatible assistant panel; chat history, stop button, page-reading tool.
 - `linux-proton.md` — run the unpackaged build under Wine/Proton (untested): setup steps + checklist.
+- `browser-features.md` — gaps vs other browsers (popup opener bug, tab audio, site info, tab sleeping, import,
+  shortcuts last); design rules for pins vs bookmarks and extensions over built-ins.
+- `tab-dragging.md` — **wait for the user's go-ahead**; drag bugs, torn-off window bounds/snap, live WebView2 move, Chrome-style tear-out.

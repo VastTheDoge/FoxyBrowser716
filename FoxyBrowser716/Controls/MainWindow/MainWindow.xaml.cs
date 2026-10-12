@@ -125,23 +125,15 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
                 args2.Handled = true;
             };
         
-        ExtensionPopupWebview.NavigationCompleted += async (_, _) =>
+        ExtensionPopupWebview.CoreWebView2.WebMessageReceived += (_, args) =>
         {
-            //TODO: not working as expected (crazy high width + height)
-            /*var result = await ExtensionPopupWebview.ExecuteScriptAsync(
-                """
-                (function(){
-                    return {
-                        width: document.documentElement.scrollWidth,
-                        height: document.documentElement.scrollHeight
-                    };
-                })();
-                """
-                );*/
-            //var size = JsonSerializer.Deserialize<PopupSize>(result);
-            ExtensionPopupWebview.Width = 300;//size.width;
-            ExtensionPopupWebview.Height = 500; //size.height;
+            if (!args.Source.StartsWith("chrome-extension://")) return;
+            try { ApplyExtensionPopupSize(args.TryGetWebMessageAsString()); }
+            catch (Exception e) when (e is ArgumentException or JsonException) { } // not one of our size reports
         };
+        ExtensionPopupWebview.NavigationCompleted += async (_, _) => await MeasureExtensionPopup();
+        _popupSizePoll.Tick += async (_, _) => await MeasureExtensionPopup();
+        ExtensionPopupRoot.Closed += (_, _) => _popupSizePoll.Stop();
         
         // _captureHelper = new VisualCaptureHelper(TabHolder, BlurredBackgroundGrid);
 
@@ -163,6 +155,8 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
 
     private async void TabManagerOnTabAdded(WebviewTab tab)
     {
+        // only SwapActiveTabTo updates tab visibility, so a tab added without becoming active (backup restore onto home) would cover the page
+        tab.Core.Visibility = tab.Id == TabManager.ActiveTabId ? Visibility.Visible : Visibility.Collapsed;
         TabHolder.Children.Add(tab.Core);
 
         //TODO handle this memory leak in the remove function above!
@@ -185,7 +179,103 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
         };
     }
 
-    private record PopupSize(double width, double height);
+    // Chrome's limits for extension popups
+    private const double PopupMinSize = 25, PopupMaxWidth = 800, PopupMaxHeight = 600;
+
+    /// <summary>Set when an extension popup was clicked; it opens once its page has loaded and been measured.</summary>
+    private bool _extensionPopupPending;
+    private readonly DispatcherTimer _popupSizePoll = new() { Interval = TimeSpan.FromMilliseconds(250) };
+
+    /// <summary>
+    /// Measures the popup page the way Chrome's popup autosize does: its min-content width and the height that gives.
+    /// Reading <c>documentElement.scrollWidth/Height</c> doesn't work, since those never report less than the current
+    /// viewport. Also installs observers that report later size changes through <c>chrome.webview.postMessage</c>.
+    /// </summary>
+    private const string PopupSizeScript =
+        """
+        (() => {
+          if (location.protocol !== 'chrome-extension:' || !document.body) return null;
+          if (!window.__foxyPopupSize) {
+            const de = document.documentElement;
+            const probe = document.createElement('div');
+            probe.style.cssText = 'position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll';
+            de.appendChild(probe);
+            const scrollbar = probe.offsetWidth - probe.clientWidth;
+            probe.remove();
+
+            let last = '', queued = false;
+            const mo = new MutationObserver(() => queue());
+            const measure = () => {
+              const body = document.body, saved = de.getAttribute('style');
+              de.style.setProperty('width', 'min-content', 'important');
+              de.style.setProperty('height', 'auto', 'important');
+              const rect = de.getBoundingClientRect(), cs = getComputedStyle(body);
+              // a body that scrolls on its own keeps its overflow inside; otherwise the overflow grows the popup
+              const clips = getComputedStyle(de).overflowY !== 'visible' && cs.overflowY !== 'visible';
+              const width = clips ? rect.width : Math.max(rect.width, body.scrollWidth + parseFloat(cs.marginLeft) + parseFloat(cs.marginRight));
+              const height = clips ? rect.height : Math.max(rect.height, body.scrollHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom));
+              if (saved === null) de.removeAttribute('style'); else de.setAttribute('style', saved);
+              mo.takeRecords(); // the style flip above is not a page change
+              const size = { type: 'foxyPopupSize', width: Math.ceil(width), height: Math.ceil(height), scrollbar, live: !!window.chrome?.webview };
+              last = size.width + 'x' + size.height;
+              return size;
+            };
+            const report = () => {
+              queued = false;
+              const prev = last, size = measure();
+              if (last !== prev) window.chrome?.webview?.postMessage(JSON.stringify(size));
+            };
+            const queue = () => { if (!queued) { queued = true; requestAnimationFrame(report); } };
+            const ro = new ResizeObserver(queue);
+            ro.observe(de);
+            ro.observe(document.body);
+            mo.observe(de, { subtree: true, childList: true, attributes: true, characterData: true });
+            document.fonts?.ready.then(queue);
+            window.__foxyPopupSize = measure;
+          }
+          return window.__foxyPopupSize();
+        })();
+        """;
+
+    private record PopupSize(string? type, double width, double height, double scrollbar, bool live);
+
+    /// <summary>Sizes the extension popup to its page, then opens it if a click is waiting on that.</summary>
+    private async Task MeasureExtensionPopup()
+    {
+        PopupSize? size = null;
+        if (ExtensionPopupWebview.CoreWebView2?.Source.StartsWith("chrome-extension://") == true)
+        {
+            try { size = ApplyExtensionPopupSize(await ExtensionPopupWebview.ExecuteScriptAsync(PopupSizeScript)); }
+            catch (Exception e) { FoxyLogger.AddError(e); }
+        }
+
+        if (_extensionPopupPending)
+        {
+            _extensionPopupPending = false;
+            ExtensionPopupRoot.IsOpen = true;
+        }
+
+        // without the WebView2 bridge the page can't report its own size changes, so poll it while it is open
+        if (size is { live: false } && ExtensionPopupRoot.IsOpen) _popupSizePoll.Start();
+        else _popupSizePoll.Stop();
+    }
+
+    private PopupSize? ApplyExtensionPopupSize(string json)
+    {
+        var size = JsonSerializer.Deserialize<PopupSize>(json);
+        if (size is not { type: "foxyPopupSize" } || size.width <= 0 || size.height <= 0) return null;
+
+        var margin = ExtensionPopupRoot.Margin;
+        var maxWidth = Math.Max(PopupMinSize, Math.Min(PopupMaxWidth, BorderGrid.ActualWidth - margin.Left - 8));
+        var maxHeight = Math.Max(PopupMinSize, Math.Min(PopupMaxHeight, BorderGrid.ActualHeight - margin.Top - 8));
+        // content past a limit scrolls, and that scrollbar takes room from the other direction
+        var width = size.width + (size.height > maxHeight ? size.scrollbar : 0);
+        var height = size.height + (size.width > maxWidth ? size.scrollbar : 0);
+        ExtensionPopupWebview.Width = Math.Clamp(width, PopupMinSize, maxWidth);
+        ExtensionPopupWebview.Height = Math.Clamp(height, PopupMinSize, maxHeight);
+        return size;
+    }
+
     private async void RefreshCurrentTabUi(WebviewTab? tab, int? browserWindowId = null)
     {
         if (tab is not null)
@@ -204,6 +294,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
 
     private void TabManagerOnActiveTabChanged((int oldId, int newId) pair)
     {
+        _extensionPopupPending = false;
         ExtensionPopupRoot.IsOpen = false;
         ExtensionPopupWebview.NavigateToString(""); // clear it
         _webContextMenu?.Close();
@@ -375,6 +466,29 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
         }
     }
 
+    /// <summary>
+    /// Moves and resizes the window to <paramref name="bounds"/>, in physical screen pixels (the same units
+    /// <see cref="GetBounds"/> returns), fitted inside the work area of the nearest monitor.
+    /// </summary>
+    public void ApplyBounds(Rect bounds)
+    {
+        var rect = new Windows.Graphics.RectInt32((int)bounds.X, (int)bounds.Y, (int)bounds.Width, (int)bounds.Height);
+
+        // saved bounds can be from a monitor that is no longer attached, or larger than this one
+        var work = DisplayArea.GetFromRect(rect, DisplayAreaFallback.Nearest).WorkArea;
+        rect.Width = Math.Min(rect.Width, work.Width);
+        rect.Height = Math.Min(rect.Height, work.Height);
+        rect.X = Math.Clamp(rect.X, work.X, work.X + work.Width - rect.Width);
+        rect.Y = Math.Clamp(rect.Y, work.Y, work.Y + work.Height - rect.Height);
+
+        // moving onto a monitor with a different DPI rescales the window, the second call lands the exact size
+        AppWindow.MoveAndResize(rect);
+        AppWindow.MoveAndResize(rect);
+
+        // a window restored maximized is never Normal for GetBounds to record its restore bounds
+        _prevBounds = new Rect(rect.X, rect.Y, rect.Width, rect.Height);
+    }
+
     public void ApplyWindowState(BrowserWindowState windowState)
     {
         TopBar.ToggleBorderless(windowState == BrowserWindowState.Borderless);
@@ -426,13 +540,14 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
 
         List<FContextMenu.MenuItem> items =
         [
-            new(new MaterialIcon {Kind = MaterialIconKind.Assistant}, 1, "AI Assistant", AssistantClick),
             new(new MaterialIcon {Kind = MaterialIconKind.CardMultiple}, 1, "Instances", InstancesClick),
             new(new MaterialIcon {Kind = MaterialIconKind.BookmarkMultiple}, 1, "Bookmarks", BookmarkClick),
             new(new MaterialIcon {Kind = MaterialIconKind.History}, 1, "History", HistoryClick),
             new(new MaterialIcon {Kind = MaterialIconKind.Download}, 1, "Downloads", DownloadClick),
             new(new MaterialIcon {Kind = MaterialIconKind.Puzzle}, 1, "Extensions", ExtensionsClick, false),
         ];
+        if (Instance.Settings.AiEnabled)
+            items.Insert(0, new(new MaterialIcon {Kind = MaterialIconKind.Assistant}, 1, "AI Assistant", AssistantClick));
 
         ContextMenuPopup.Margin = new Thickness(32, 28, 0, 0);
         switch (TabManager.ActiveTabId)
@@ -535,8 +650,9 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
                             ShowToast(ExtensionManager.GetDisplayName(e), "This extension has no popup. Its options are in Settings > Extensions.", MaterialIconKind.Puzzle);
                             return;
                         }
+                        // opened by MeasureExtensionPopup once loaded, so it appears at its own size
+                        _extensionPopupPending = true;
                         ExtensionPopupWebview.CoreWebView2.Navigate($"chrome-extension://{e.Id}/{popup}");
-                        ExtensionPopupRoot.IsOpen = true;
                     });
             })
             .ToList();

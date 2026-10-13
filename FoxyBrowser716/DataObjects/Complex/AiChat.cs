@@ -1,6 +1,7 @@
 using System.Threading;
 using FoxyBrowser716.Controls.MainWindow;
 using FoxyBrowser716.DataObjects.Complex.Ai;
+using FoxyBrowser716.DataObjects.Settings;
 
 namespace FoxyBrowser716.DataObjects.Complex;
 
@@ -17,7 +18,8 @@ public class AiChat
 	private static int _chatCounter;
 	public int Id { get; } = Interlocked.Increment(ref _chatCounter);
 
-	private const string SystemPrompt =
+	/// <summary>Used when the user hasn't set their own in <see cref="BrowserSettings.AiSystemPrompt"/>.</summary>
+	public const string DefaultSystemPrompt =
 		"""
 		You are the assistant built into FoxyBrowser, a web browser. You talk with the user in a narrow side panel next to their tabs.
 
@@ -66,7 +68,22 @@ public class AiChat
 		Effort = effort;
 		PermissionMode = permissionMode;
 		var tools = BrowserTools.Create(mainWindow).Select(WithPermissionCheck).ToList();
-		_conversation = AiConversation.Create(model.Provider, () => mainWindow.Instance.Settings, SystemPrompt, tools);
+		_conversation = AiConversation.Create(model.Provider, () => mainWindow.Instance.Settings, SystemPrompt(mainWindow.Instance.Settings), tools);
+	}
+
+	/// <summary>The prompt new chats start with: the user's own, or the default.</summary>
+	public static string SystemPrompt(BrowserSettings settings) =>
+		string.IsNullOrWhiteSpace(settings.AiSystemPrompt) ? DefaultSystemPrompt : settings.AiSystemPrompt;
+
+	/// <summary>
+	/// What to store for <paramref name="prompt"/> as typed in the settings box: empty when it is the default (or
+	/// blank), so the stored value only ever holds a real customisation. Line endings are normalised because the
+	/// text box turns them into bare \r.
+	/// </summary>
+	public static string ToStoredSystemPrompt(string prompt)
+	{
+		var normalized = prompt.ReplaceLineEndings("\n").Trim();
+		return normalized.Length == 0 || normalized == DefaultSystemPrompt.ReplaceLineEndings("\n").Trim() ? "" : normalized;
 	}
 
 	/// <summary>Switches to another model of the same provider; the history carries over.</summary>

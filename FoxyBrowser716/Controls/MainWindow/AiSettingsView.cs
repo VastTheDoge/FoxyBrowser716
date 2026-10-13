@@ -1,5 +1,6 @@
 using FoxyBrowser716.Controls.Generic;
 using FoxyBrowser716.Controls.SettingsPage.SettingsCustomControls;
+using FoxyBrowser716.DataObjects.Complex;
 using FoxyBrowser716.DataObjects.Complex.Ai;
 using FoxyBrowser716.DataObjects.Settings;
 
@@ -7,7 +8,7 @@ namespace FoxyBrowser716.Controls.MainWindow;
 
 /// <summary>
 /// The assistant's own settings, shown inside the chat panel (gear button): provider keys and server, the Claude
-/// budget, default permissions, and tab-group naming. The settings page only has the on/off switch. Keys and the
+/// budget, default permissions, the system prompt, and tab-group naming. The settings page only has the on/off switch. Keys and the
 /// budget are shared by every instance; the rest belong to this instance like any other setting.
 /// </summary>
 public sealed partial class AiSettingsView : ThemedUserControl
@@ -75,6 +76,14 @@ public sealed partial class AiSettingsView : ThemedUserControl
 		var permissions = new AiToolPermissionsController(window);
 		Add(new CustomControlSettingControl(new CustomControlSetting("Custom permissions",
 			"Used when a chat is in Custom mode. Tools not changed here behave like Read-only.", _ => permissions), permissions));
+
+		Add(new HeaderSettingControl(new HeaderSetting("Chat")));
+		Add(new StringSettingControl(new StringSetting("System prompt",
+			"The instructions every new chat starts with. Changes apply to chats started afterwards; leave it empty to use the default.",
+			AiChat.SystemPrompt(settings),
+			prompt => settings.AiSystemPrompt = AiChat.ToStoredSystemPrompt(prompt),
+			multiline: true,
+			resetValue: AiChat.DefaultSystemPrompt)));
 
 		Add(new HeaderSettingControl(new HeaderSetting("Tab groups")));
 		Add(new BoolSettingControl(new BoolSetting("Name tab groups",

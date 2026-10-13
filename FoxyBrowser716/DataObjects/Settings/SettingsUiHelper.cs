@@ -434,6 +434,7 @@ public class DecimalSettingControl : BaseSettingControl
 public class StringSettingControl : BaseSettingControl
 {
 	private FTextInput textBox;
+	private FTextButton? resetButton;
 	private readonly StringSetting setting;
 
 	public StringSettingControl(StringSetting stringSetting) : base(stringSetting.Name, stringSetting.Description, DefaultThemes.DarkMode)
@@ -452,6 +453,16 @@ public class StringSettingControl : BaseSettingControl
 			setting.Value = s;
 		};
 
+		if (setting.ResetValue is { } resetValue)
+		{
+			resetButton = new FTextButton { ButtonText = "Reset to default", Height = 28, CornerRadius = new CornerRadius(5) };
+			resetButton.OnClick += (_, _) =>
+			{
+				textBox.Text = resetValue;
+				setting.Value = resetValue;
+			};
+		}
+
 		if (setting.Multiline)
 		{
 			textBox.Multiline = true;
@@ -460,20 +471,24 @@ public class StringSettingControl : BaseSettingControl
 			textBox.MaxHeight = 160;
 			textBox.HorizontalAlignment = HorizontalAlignment.Stretch;
 			AddControlBelow(textBox);
+			if (resetButton is not null) AddControlToRight(resetButton);
 		}
 		else
 		{
 			textBox.AcceptsReturn = false;
 			textBox.Width = EntryWidth;
-			AddControlToRight(textBox);
+			AddControlToRight(resetButton is null
+				? textBox
+				: new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { textBox, resetButton } });
 		}
 	}
 
 	protected override void ApplyTheme()
 	{
 		base.ApplyTheme();
-		
+
 		textBox.CurrentTheme = CurrentTheme;
+		if (resetButton is not null) resetButton.CurrentTheme = CurrentTheme;
 	}
 }
 

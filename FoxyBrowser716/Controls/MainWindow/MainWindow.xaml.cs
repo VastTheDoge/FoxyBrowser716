@@ -36,6 +36,10 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
     public TabManager TabManager { get; private set; }
     public Instance Instance { get; private set; }
 
+    private static int _windowCounter;
+    /// <summary>Unique for this run across every instance, like tab ids; the assistant's window_id.</summary>
+    public int WindowNumber { get; } = System.Threading.Interlocked.Increment(ref _windowCounter);
+
     public Action<InfoGetter.SearchEngine> SearchEngineChangeRequested;
     
     // private VisualCaptureHelper? _captureHelper;

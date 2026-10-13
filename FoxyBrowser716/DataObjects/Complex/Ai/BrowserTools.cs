@@ -6,8 +6,10 @@ namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
 /// <summary>
 /// The tools the assistant gets for the window it lives in: tabs and tab groups, reading pages as text (or a
-/// screenshot), and acting on them. Permission checks happen in <see cref="AiChat"/>; these only validate input
-/// and do the work.
+/// screenshot), and acting on them, plus the other windows it can reach (its instance's, and other instances' when
+/// <see cref="Settings.BrowserSettings.AiSeeOtherInstances"/> allows; never across a private instance). Tab and group ids are
+/// unique across windows, so tab tools find a tab wherever it is. Permission checks happen in <see cref="AiChat"/>;
+/// these only validate input and do the work.
 /// </summary>
 public static class BrowserTools
 {
@@ -43,18 +45,77 @@ public static class BrowserTools
 			return (id, tab, core);
 		}
 
-		WebviewTab Tab(int id) => tabs.TryGetTab(id, out var tab)
-			? tab!
-			: throw new AiToolException($"No tab with id {id}. Use get_list_of_tabs to see the open tabs.");
+		// The chat always reaches its own instance's windows; other instances' only when the user allows it. Private
+		// instances are walled off both ways: a private chat stays in its instance, and nothing looks into a private one.
+		bool CanReach(Instance instance) =>
+			instance == window.Instance
+			|| (window.Instance.Settings.AiSeeOtherInstances && !window.Instance.IsPrivate && !instance.IsPrivate);
 
-		TabGroup Group(int id) => tabs.Groups.FirstOrDefault(g => g.Id == id)
-			?? throw new AiToolException($"No group with id {id}. Use get_list_of_tabs to see the groups.");
+		string WhyUnreachable(Instance instance) =>
+			window.Instance.IsPrivate ? "This chat is in a private instance, so other instances are off limits."
+			: instance.IsPrivate ? "It's a private instance, so the assistant can't look into it."
+			: "The user hasn't let the assistant see other instances (assistant settings → Permissions).";
+
+		// this window's tabs first, then the rest it can reach; tab and group ids are unique across all of them
+		IEnumerable<TabManager> Managers() => AppServer.Instances
+			.Where(CanReach)
+			.SelectMany(i => i.Windows)
+			.Select(w => w.TabManager)
+			.Where(m => m != tabs)
+			.Prepend(tabs);
+
+		MainWindow Window(int id)
+		{
+			var found = AppServer.Instances.SelectMany(i => i.Windows).FirstOrDefault(w => w.WindowNumber == id)
+				?? throw new AiToolException($"No window {id} (it may have been closed). Use list_windows to see the open windows.");
+			return CanReach(found.Instance) ? found : throw new AiToolException($"Window {id} belongs to another instance. {WhyUnreachable(found.Instance)}");
+		}
+
+		Instance InstanceNamed(string name)
+		{
+			var found = AppServer.Instances.FirstOrDefault(i => string.Equals(i.Name, name.Trim(), StringComparison.OrdinalIgnoreCase))
+				?? throw new AiToolException($"No instance named \"{name}\". Instances: {string.Join(", ", AppServer.Instances.Select(i => $"\"{i.Name}\""))}.");
+			return CanReach(found) ? found : throw new AiToolException($"The assistant can't use the \"{found.Name}\" instance. {WhyUnreachable(found)}");
+		}
+
+		WebviewTab Tab(int id)
+		{
+			foreach (var manager in Managers())
+				if (manager.TryGetTab(id, out var tab)) return tab!;
+			throw new AiToolException($"No tab with id {id}. Use get_list_of_tabs to see the open tabs.");
+		}
+
+		(TabGroup Group, TabManager Manager) Group(int id)
+		{
+			foreach (var manager in Managers())
+				if (manager.Groups.FirstOrDefault(g => g.Id == id) is { } group) return (group, manager);
+			throw new AiToolException($"No group with id {id}. Use get_list_of_tabs to see the groups.");
+		}
+
+		// group tools work inside one window, the way the user drags tabs into groups
+		TabManager SameWindow(IEnumerable<int> ids)
+		{
+			var managers = ids.Select(id => Tab(id).TabManager).Distinct().ToList();
+			return managers.Count == 1
+				? managers[0]
+				: throw new AiToolException("Those tabs are in different windows. Tab groups belong to one window; move the tabs together first with move_tabs_to_window.");
+		}
+
+		string InWindow(TabManager manager) => manager == tabs ? "" : $" in window {manager.Window.WindowNumber}";
 
 		static string Host(CoreWebView2 core) => Uri.TryCreate(core.Source, UriKind.Absolute, out var uri) ? uri.Host : core.Source;
 
 		static string Where(int id, CoreWebView2 core) => $"Tab {id} is at {core.Source} (\"{core.DocumentTitle}\").";
 
-		string TabLine(WebviewTab tab) => $"Tab {tab.Id}: \"{tab.Info.Title}\" at {tab.Info.Url}{(tab.Id == tabs.ActiveTabId ? " (ACTIVE)" : "")}";
+		static string TabLine(WebviewTab tab) => $"Tab {tab.Id}: \"{tab.Info.Title}\" at {tab.Info.Url}{(tab.Id == tab.TabManager.ActiveTabId ? " (ACTIVE)" : "")}";
+
+		static string Showing(TabManager manager) => manager.ActiveTabId switch
+		{
+			HomeId => "showing the home page",
+			SettingsId => "showing the settings page",
+			var id when manager.TryGetTab(id, out var tab) => $"showing tab {id} \"{tab!.Info.Title}\" at {tab.Info.Url}",
+			_ => "showing nothing yet",
+		};
 
 		// fails the call with a useful message when the page script reports a problem with the element
 		static JsonElement Check(JsonElement result, string elementRef)
@@ -80,13 +141,14 @@ public static class BrowserTools
 		// (links with target=_blank open a tab and switch to it).
 		async Task<string> Act(int id, CoreWebView2 core, Func<Task> action, string done)
 		{
-			var before = tabs.GetAllTabs().Keys.ToHashSet();
+			var manager = Tab(id).TabManager;
+			var before = manager.GetAllTabs().Keys.ToHashSet();
 			var navigated = await PageAgent.RunAndWaitForNavigation(core, action, NavigationWait);
 
 			var sb = new StringBuilder(done).Append(' ').Append(Where(id, core));
 			if (navigated) sb.Append(" (It navigated.)");
-			foreach (var (newId, tab) in tabs.GetAllTabs().Where(t => !before.Contains(t.Key)))
-				sb.Append($" It opened a new tab {newId} at {tab.Info.Url}{(newId == tabs.ActiveTabId ? ", which is now the active tab" : "")}.");
+			foreach (var (newId, tab) in manager.GetAllTabs().Where(t => !before.Contains(t.Key)))
+				sb.Append($" It opened a new tab {newId}{InWindow(manager)} at {tab.Info.Url}{(newId == manager.ActiveTabId ? ", which is now the active tab" : "")}.");
 			return sb.ToString();
 		}
 
@@ -98,26 +160,34 @@ public static class BrowserTools
 		var tabIds = ArrayProp("integer", "Tab ids from get_list_of_tabs.");
 		var groupId = Prop("integer", "Group id from get_list_of_tabs.");
 		var color = ColorProp("Group color as red, green and blue, each 0-255, like { \"r\": 173, \"g\": 216, \"b\": 230 } for light blue.");
+		var windowId = Prop("integer", "Window id from list_windows.");
 
 		return
 		[
 			#region Reading
 			new("get_list_of_tabs", "List tabs", AiToolKind.Read,
-				"List the tabs in this window in the order the user sees them, with their tab groups: ids, titles, URLs, and which one is active. " +
-				"Tab -1 is the FoxyBrowser home page (the user can be on it; switch_to_tab can go back to it).",
-				Props(), [],
-				_ =>
+				"List the tabs in this window (or another one, with window_id) in the order the user sees them, with their tab groups: ids, titles, URLs, and which one is active. " +
+				"Tab -1 is this window's FoxyBrowser home page (the user can be on it; switch_to_tab can go back to it). " +
+				"Tab and group ids are unique across windows, so the page, tab and group tools also work on tabs listed for other windows.",
+				Props(("window_id", Prop("integer", "Window id from list_windows. Leave out for this window."))), [],
+				input =>
 				{
+					var manager = input.ContainsKey("window_id") ? Window(GetInt(input, "window_id")).TabManager : tabs;
 					var sb = new StringBuilder();
-					sb.AppendLine($"Tab -1: FoxyBrowser home page{(tabs.ActiveTabId == HomeId ? " (ACTIVE)" : "")}");
-					if (tabs.ActiveTabId == SettingsId) sb.AppendLine("The user is looking at the FoxyBrowser settings page.");
-					foreach (var tab in tabs.Tabs) sb.AppendLine(TabLine(tab));
-					foreach (var group in tabs.Groups)
+					if (manager == tabs)
+					{
+						sb.AppendLine($"Tab -1: FoxyBrowser home page{(tabs.ActiveTabId == HomeId ? " (ACTIVE)" : "")}");
+						if (tabs.ActiveTabId == SettingsId) sb.AppendLine("The user is looking at the FoxyBrowser settings page.");
+					}
+					else
+						sb.AppendLine($"Window {manager.Window.WindowNumber} of the \"{manager.Instance.Name}\" instance, {Showing(manager)}:");
+					foreach (var tab in manager.Tabs) sb.AppendLine(TabLine(tab));
+					foreach (var group in manager.Groups)
 					{
 						sb.AppendLine($"Group {group.Id} \"{group.Name}\" ({Rgb(group.GroupColor)}), {group.Tabs.Count} tab(s):");
 						foreach (var tab in group.Tabs) sb.AppendLine("  " + TabLine(tab));
 					}
-					if (tabs.GetAllTabs().Count == 0) sb.AppendLine("No website tabs are open.");
+					if (manager.GetAllTabs().Count == 0) sb.AppendLine("No website tabs are open.");
 					return Done(sb.ToString());
 				}),
 
@@ -360,15 +430,23 @@ public static class BrowserTools
 			},
 
 			new("switch_to_tab", "Switch tab", AiToolKind.Action,
-				"Show a tab to the user. Tab -1 is the FoxyBrowser home page.",
+				"Show a tab to the user. Tab -1 is this window's FoxyBrowser home page. A tab in another window becomes that window's active tab, " +
+				"but the window isn't brought to the front; use focus_window for that.",
 				Props(("tab_id", Prop("integer", "Tab id from get_list_of_tabs, or -1 for the home page."))), ["tab_id"],
 				input =>
 				{
 					var id = GetInt(input, "tab_id");
 					if (id == SettingsId) throw new AiToolException("The assistant can't open the settings page. Ask the user to open it (☰ menu → Settings).");
-					if (id != HomeId) Tab(id);
-					tabs.SwapActiveTabTo(id);
-					return Done(id == HomeId ? "Switched to the home page." : $"Switched to tab {id}.");
+					if (id == HomeId)
+					{
+						tabs.SwapActiveTabTo(HomeId);
+						return Done("Switched to the home page.");
+					}
+					var manager = Tab(id).TabManager;
+					manager.SwapActiveTabTo(id);
+					return Done(manager == tabs
+						? $"Switched to tab {id}."
+						: $"Window {manager.Window.WindowNumber} now shows tab {id}. It wasn't brought to the front; use focus_window if the user should see it.");
 				})
 			{
 				Describe = input =>
@@ -385,12 +463,18 @@ public static class BrowserTools
 				{
 					var id = GetInt(input, "tab_id");
 					if (id < 0) throw new AiToolException("The home and settings pages can't be closed.");
-					Tab(id);
-					tabs.RemoveTab(id);
-					return Done(tabs.TryGetTab(id, out _) ? $"Tab {id} wasn't closed." : $"Closed tab {id}. The active tab is now {(tabs.ActiveTabId == HomeId ? "the home page" : tabs.ActiveTabId.ToString())}.");
+					var manager = Tab(id).TabManager;
+					manager.RemoveTab(id);
+					return Done(manager.TryGetTab(id, out _)
+						? $"Tab {id} wasn't closed."
+						: $"Closed tab {id}. The active tab{InWindow(manager)} is now {(manager.ActiveTabId == HomeId ? "the home page" : manager.ActiveTabId.ToString())}.");
 				})
 			{
-				Describe = input => Task.FromResult($"Close tab {GetInt(input, "tab_id")} (\"{Tab(GetInt(input, "tab_id")).Info.Title}\")"),
+				Describe = input =>
+				{
+					var tab = Tab(GetInt(input, "tab_id"));
+					return Task.FromResult($"Close tab {tab.Id} (\"{tab.Info.Title}\"){InWindow(tab.TabManager)}");
+				},
 			},
 
 			new("history_navigation", "Back / forward / reload", AiToolKind.Action,
@@ -421,26 +505,34 @@ public static class BrowserTools
 
 			#region Tab groups
 			new("group_tabs", "Group tabs", AiToolKind.Action,
-				"Put tabs into a tab group: a new group (give it a short name), or an existing one (group_id). Tabs already in another group move over; a group left empty disappears.",
+				"Put tabs into a tab group: a new group (give it a short name), or an existing one (group_id). Tabs already in another group move over; a group left empty disappears. " +
+				"A group holds tabs from its own window only.",
 				Props(("tab_ids", tabIds), ("name", Prop("string", "Name for a new group, a few words. Renames the group when used with group_id.")),
 					("group_id", groupId), ("color", color)), ["tab_ids"],
 				input =>
 				{
 					var ids = GetIntArray(input, "tab_ids");
-					foreach (var id in ids) Tab(id);
+					var manager = SameWindow(ids);
 
-					var group = input.ContainsKey("group_id") ? Group(GetInt(input, "group_id")) : tabs.CreateGroup();
+					TabGroup group;
+					if (input.ContainsKey("group_id"))
+					{
+						(group, var groupManager) = Group(GetInt(input, "group_id"));
+						if (groupManager != manager)
+							throw new AiToolException($"Group {group.Id} is in a different window from those tabs. Move the tabs to its window first with move_tabs_to_window.");
+					}
+					else group = manager.CreateGroup();
 					if (input.ContainsKey("name")) group.Name = GetString(input, "name").Trim();
 					if (input.ContainsKey("color")) group.GroupColor = GetColor(input, "color");
-					foreach (var id in ids) tabs.MoveTabToGroup(id, group.Id);
-					return Done($"Group {group.Id} \"{group.Name}\" has {group.Tabs.Count} tab(s): {string.Join(", ", group.Tabs.Select(t => t.Id))}.");
+					foreach (var id in ids) manager.MoveTabToGroup(id, group.Id);
+					return Done($"Group {group.Id} \"{group.Name}\"{InWindow(manager)} has {group.Tabs.Count} tab(s): {string.Join(", ", group.Tabs.Select(t => t.Id))}.");
 				})
 			{
 				Describe = input =>
 				{
 					var ids = string.Join(", ", GetIntArray(input, "tab_ids").Select(id => $"\"{Tab(id).Info.Title}\""));
 					var into = input.ContainsKey("group_id")
-						? $"group \"{Group(GetInt(input, "group_id")).Name}\""
+						? $"group \"{Group(GetInt(input, "group_id")).Group.Name}\""
 						: input.ContainsKey("name") ? $"a new group \"{GetString(input, "name")}\"" : "a new group";
 					return Task.FromResult($"Put {ids} into {into}");
 				},
@@ -452,8 +544,8 @@ public static class BrowserTools
 				input =>
 				{
 					var ids = GetIntArray(input, "tab_ids");
-					foreach (var id in ids) Tab(id);
-					foreach (var id in ids) tabs.MoveTabToGroup(id, -1);
+					var found = ids.Select(Tab).ToList();
+					foreach (var tab in found) tab.TabManager.MoveTabToGroup(tab.Id, -1);
 					return Done($"Tabs {string.Join(", ", ids)} are no longer in a group.");
 				})
 			{
@@ -465,7 +557,7 @@ public static class BrowserTools
 				Props(("group_id", groupId), ("name", Prop("string", "New name, a few words.")), ("color", color)), ["group_id"],
 				input =>
 				{
-					var group = Group(GetInt(input, "group_id"));
+					var (group, _) = Group(GetInt(input, "group_id"));
 					if (!input.ContainsKey("name") && !input.ContainsKey("color")) throw new AiToolException("Give a name or a color.");
 					if (input.ContainsKey("name")) group.Name = GetString(input, "name").Trim();
 					if (input.ContainsKey("color")) group.GroupColor = GetColor(input, "color");
@@ -474,7 +566,7 @@ public static class BrowserTools
 			{
 				Describe = input =>
 				{
-					var group = Group(GetInt(input, "group_id"));
+					var (group, _) = Group(GetInt(input, "group_id"));
 					var changes = new List<string>();
 					if (input.ContainsKey("name")) changes.Add($"rename it to \"{GetString(input, "name")}\"");
 					if (input.ContainsKey("color")) changes.Add($"color it {Rgb(GetColor(input, "color"))}");
@@ -487,23 +579,150 @@ public static class BrowserTools
 				Props(("group_id", groupId), ("close_tabs", Prop("boolean", "Close the group's tabs as well. Default false."))), ["group_id"],
 				input =>
 				{
-					var group = Group(GetInt(input, "group_id"));
+					var (group, manager) = Group(GetInt(input, "group_id"));
 					var count = group.Tabs.Count;
 					if (GetBool(input, "close_tabs"))
 					{
-						tabs.RemoveGroup(group.Id);
+						manager.RemoveGroup(group.Id);
 						return Done($"Removed group \"{group.Name}\" and closed its {count} tab(s).");
 					}
-					tabs.DissolveGroup(group);
+					manager.DissolveGroup(group);
 					return Done($"Removed group \"{group.Name}\"; its {count} tab(s) are now ungrouped.");
 				})
 			{
 				Describe = input =>
 				{
-					var group = Group(GetInt(input, "group_id"));
+					var (group, _) = Group(GetInt(input, "group_id"));
 					return Task.FromResult(GetBool(input, "close_tabs")
 						? $"Remove group \"{group.Name}\" and close its {group.Tabs.Count} tab(s)"
 						: $"Remove group \"{group.Name}\" (its tabs stay open)");
+				},
+			},
+			#endregion
+
+			#region Windows and instances
+			new("list_windows", "List windows", AiToolKind.Read,
+				"List FoxyBrowser's open windows by instance. Instances are separate browser profiles, each with its own tabs, history and logins. " +
+				"For each window: its id, what it's showing, how many tabs it has, and whether it's minimized. Use window_id with get_list_of_tabs to see a window's tabs.",
+				Props(), [],
+				_ =>
+				{
+					static string State(MainWindow w) => w.StateFromWindow() switch
+					{
+						MainWindow.BrowserWindowState.Minimized => ", minimized",
+						MainWindow.BrowserWindowState.Maximized => ", maximized",
+						MainWindow.BrowserWindowState.Borderless => ", full screen",
+						_ => "",
+					};
+
+					var sb = new StringBuilder();
+					foreach (var instance in AppServer.Instances.OrderByDescending(i => i == window.Instance))
+					{
+						List<string> tags = [];
+						if (instance == window.Instance) tags.Add("this chat's instance");
+						if (instance.IsPrimaryInstance) tags.Add("primary");
+						if (instance.IsPrivate) tags.Add("private");
+						var label = $"Instance \"{instance.Name}\"{(tags.Count > 0 ? $" ({string.Join(", ", tags)})" : "")}";
+						var windows = instance.Windows.ToList();
+
+						if (!CanReach(instance))
+						{
+							sb.AppendLine($"{label}: {windows.Count} window(s). {WhyUnreachable(instance)}");
+							continue;
+						}
+						sb.AppendLine(windows.Count == 0 ? $"{label}: no open windows." : $"{label}:");
+						foreach (var w in windows)
+							sb.AppendLine($"  Window {w.WindowNumber}{(w == window ? " (THIS WINDOW, where the chat is)" : "")}: " +
+								$"{w.TabManager.GetAllTabs().Count} tab(s), {Showing(w.TabManager)}{State(w)}");
+					}
+					return Done(sb.ToString());
+				}),
+
+			new("focus_window", "Focus window", AiToolKind.Action,
+				"Bring a window to the front, restoring it if it's minimized.",
+				Props(("window_id", windowId)), ["window_id"],
+				input =>
+				{
+					var target = Window(GetInt(input, "window_id"));
+					if (target.StateFromWindow() == MainWindow.BrowserWindowState.Minimized)
+						target.ApplyWindowState(MainWindow.BrowserWindowState.Normal);
+					target.Activate();
+					return Done($"Window {target.WindowNumber} is in front now, {Showing(target.TabManager)}.");
+				})
+			{
+				Describe = input =>
+				{
+					var target = Window(GetInt(input, "window_id"));
+					return Task.FromResult($"Bring window {target.WindowNumber} (\"{target.Instance.Name}\" instance, {Showing(target.TabManager)}) to the front");
+				},
+			},
+
+			new("open_window", "Open window", AiToolKind.Action,
+				"Open a new window, optionally with tabs at some URLs, in this chat's instance or another one by name. " +
+				"Text that isn't a valid URL is searched with the default search engine. The new window comes to the front.",
+				Props(("urls", ArrayProp("string", "URLs (or search text) to open as tabs. Leave out for a window on the home page.")),
+					("instance", Prop("string", "Instance name from list_windows. Leave out for this chat's instance."))), [],
+				async input =>
+				{
+					var instance = input.ContainsKey("instance") ? InstanceNamed(GetString(input, "instance")) : window.Instance;
+					var urls = input.ContainsKey("urls") ? GetStringArray(input, "urls") : [];
+					var opened = await instance.CreateWindow(urls.ToArray()) ?? throw new AiToolException("The window couldn't be opened.");
+					var ids = opened.TabManager.Tabs.Select(t => t.Id).ToList();
+					return $"Opened window {opened.WindowNumber} in the \"{instance.Name}\" instance" +
+						(ids.Count > 0 ? $" with tab(s) {string.Join(", ", ids)}. They may still be loading." : " on the home page.");
+				})
+			{
+				Describe = input =>
+				{
+					var instance = input.ContainsKey("instance") ? InstanceNamed(GetString(input, "instance")) : window.Instance;
+					var urls = input.ContainsKey("urls") ? GetStringArray(input, "urls") : [];
+					return Task.FromResult($"Open a new window in the \"{instance.Name}\" instance" +
+						(urls.Count > 0 ? $" with {string.Join(", ", urls.Select(u => Truncate(u, 200)))}" : ""));
+				},
+			},
+
+			new("move_tabs_to_window", "Move tabs to window", AiToolKind.Action,
+				"Move tabs to another window of the same instance, or into a new window when window_id is left out. " +
+				"Moved tabs reload at their current URL and get new ids; their back/forward history doesn't come along. " +
+				"Tabs can't move between instances (each has its own logins); to show a page in another instance, use open_window with its URL.",
+				Props(("tab_ids", tabIds), ("window_id", Prop("integer", "Window to move them to, from list_windows. Leave out to put them in a new window."))), ["tab_ids"],
+				async input =>
+				{
+					var moving = GetIntArray(input, "tab_ids").Select(Tab).ToList();
+					var source = moving[0].TabManager;
+					if (moving.Any(t => !TabManager.CanAcceptTabsFrom(t.TabManager, source)))
+						throw new AiToolException("Those tabs are in different instances; move each instance's tabs separately.");
+
+					var toNew = !input.ContainsKey("window_id");
+					MainWindow target;
+					if (toNew)
+						target = await source.Instance.CreateWindow() ?? throw new AiToolException("The new window couldn't be opened.");
+					else
+					{
+						target = Window(GetInt(input, "window_id"));
+						if (!TabManager.CanAcceptTabsFrom(target.TabManager, source))
+							throw new AiToolException($"Window {target.WindowNumber} is in the \"{target.Instance.Name}\" instance, and tabs can't move between instances. Use open_window with instance and their URLs instead.");
+						if (moving.All(t => t.TabManager == target.TabManager))
+							throw new AiToolException($"Those tabs are already in window {target.WindowNumber}.");
+					}
+
+					List<string> moved = [];
+					foreach (var tab in moving.Where(t => t.TabManager != target.TabManager))
+					{
+						var before = target.TabManager.GetAllTabs().Keys.ToHashSet();
+						target.TabManager.MoveTabFromWindow(tab, tab.TabManager, -1);
+						var newId = target.TabManager.GetAllTabs().Keys.Where(k => !before.Contains(k)).Cast<int?>().FirstOrDefault();
+						moved.Add(newId is null ? $"tab {tab.Id}" : $"tab {tab.Id} (now tab {newId})");
+					}
+					return $"Moved {string.Join(", ", moved)} into {(toNew ? "new " : "")}window {target.WindowNumber}. They're reloading at their URLs.";
+				})
+			{
+				Describe = input =>
+				{
+					var titles = string.Join(", ", GetIntArray(input, "tab_ids").Select(id => $"\"{Tab(id).Info.Title}\""));
+					return Task.FromResult(input.ContainsKey("window_id")
+						? $"Move {titles} to window {Window(GetInt(input, "window_id")).WindowNumber}"
+						: $"Move {titles} to a new window");
 				},
 			},
 			#endregion
@@ -551,6 +770,21 @@ public static class BrowserTools
 		value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) ? number
 		: value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out number) ? number
 		: null;
+
+	/// <summary>A list of non-empty strings; a single string is taken as a list of one.</summary>
+	private static List<string> GetStringArray(IReadOnlyDictionary<string, JsonElement> input, string name)
+	{
+		if (input.TryGetValue(name, out var value))
+		{
+			if (value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } single) return [single];
+			if (value.ValueKind == JsonValueKind.Array)
+			{
+				var items = value.EnumerateArray().Select(v => v.ValueKind == JsonValueKind.String ? v.GetString() : null).ToList();
+				if (items.All(i => !string.IsNullOrWhiteSpace(i))) return items.Select(i => i!).ToList();
+			}
+		}
+		throw new AiToolException($"'{name}' must be a list of strings.");
+	}
 
 	/// <summary>A list of integers; a single number is taken as a list of one.</summary>
 	private static List<int> GetIntArray(IReadOnlyDictionary<string, JsonElement> input, string name)

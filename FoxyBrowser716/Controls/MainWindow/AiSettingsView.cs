@@ -76,6 +76,9 @@ public sealed partial class AiSettingsView : ThemedUserControl
 		var permissions = new AiToolPermissionsController(window);
 		Add(new CustomControlSettingControl(new CustomControlSetting("Custom permissions",
 			"Used when a chat is in Custom mode. Tools not changed here behave like Read-only.", _ => permissions), permissions));
+		Add(new BoolSettingControl(new BoolSetting("See other instances",
+			"Let the assistant see and use the windows and tabs of your other instances. It always has this instance's windows. Private instances stay off limits either way.",
+			settings.AiSeeOtherInstances, on => settings.AiSeeOtherInstances = on)));
 
 		Add(new HeaderSettingControl(new HeaderSetting("Chat")));
 		Add(new StringSettingControl(new StringSetting("System prompt",

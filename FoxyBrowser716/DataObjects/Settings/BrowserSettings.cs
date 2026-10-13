@@ -359,6 +359,12 @@ public sealed partial class BrowserSettings : ObservableObject
     /// <summary>A small, cheap model for quick jobs like naming tab groups.</summary>
     public AiModelChoice AiQuickModel { get; set => SetProperty(ref field, value); } = AiModelChoice.DefaultQuick;
 
+    /// <summary>
+    /// Let the assistant see and use other instances' windows and tabs; it always has this instance's. Private
+    /// instances stay walled off either way.
+    /// </summary>
+    public bool AiSeeOtherInstances { get; set => SetProperty(ref field, value); } = false;
+
     /// <summary>The chat panel's system prompt for new chats; empty uses <see cref="AiChat.DefaultSystemPrompt"/>, so edits to the default still reach users who never changed it.</summary>
     public string AiSystemPrompt { get; set => SetProperty(ref field, value); } = "";
     #endregion

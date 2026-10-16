@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using CommunityToolkit.WinUI;
+using FoxyBrowser716.DataObjects.Settings;
 using FoxyBrowser716.ErrorHandeler;
 
 namespace FoxyBrowser716.DataManagement;
@@ -8,13 +9,17 @@ public static class BackupManagement
 {
 	private static readonly string BackupPath = FoxyFileManager.BuildFilePath("Backup.json", FoxyFileManager.FolderType.Cache);
 	
-	public static bool CheckForRestore()
+	public static bool CheckForRestore() => WindowsToRestore().Length > 0;
+
+	//C a clean close only brings back instances set to continue where they left off
+	private static WindowBackupModel[] WindowsToRestore()
 	{
 		var response = FoxyFileManager.ReadFromFile<AppBackupModel>(BackupPath);
-		
-		// a backup with no windows has nothing to restore; treating it as a restore would leave the app
-		// running with no window at all
-		return response is { code: FoxyFileManager.ReturnCode.Success, content.Windows.Length: > 0 };
+		if (response is not { code: FoxyFileManager.ReturnCode.Success, content: { } backup })
+			return [];
+		return backup.ClosedCleanly
+			? backup.Windows.Where(w => AppServer.Instances.FirstOrDefault(i => i.Name == w.InstanceName)?.Settings.StartupMode == StartupMode.ContinueWhereLeftOff).ToArray()
+			: backup.Windows;
 	}
 
 	public static void ClearBackup()
@@ -22,16 +27,26 @@ public static class BackupManagement
 		FoxyFileManager.DeleteFile(BackupPath);
 	}
 
+	public static void SaveOnLastWindowClosing()
+	{
+		try
+		{
+			FoxyFileManager.SaveToFile(BackupPath, BuildBackup() with { ClosedCleanly = true });
+		}
+		catch (Exception e)
+		{
+			FoxyLogger.AddError(e);
+		}
+	}
+
 	public static async Task RestoreBackup()
 	{
 		try
 		{
-			var response = FoxyFileManager.ReadFromFile<AppBackupModel>(BackupPath);
-		
-			if (response is { code: FoxyFileManager.ReturnCode.Success, content: { } backup })
+			var windows = WindowsToRestore();
 			{
 				List<Task> windowInitTasks = [];
-				foreach (var window in backup.Windows)
+				foreach (var window in windows)
 				{
 					if (AppServer.Instances.FirstOrDefault(x => x.Name == window.InstanceName) is { } instance)
 					{
@@ -88,30 +103,7 @@ public static class BackupManagement
 			{
 				try
 				{
-					List<WindowBackupModel> windows = [];
-					windows.AddRange(
-						from instance in AppServer.Instances 
-						from window in instance.Windows
-						select new WindowBackupModel
-						{
-							InstanceName = instance.Name,
-							State = window.StateFromWindow(),
-							Bounds = window.GetBounds(),
-							ActiveTabId = window.TabManager.ActiveTabId,
-							Tabs = window.TabManager.Tabs.ToDictionary(x => x.Id, y => y.Info.Url),
-							TabGroups = window.TabManager.Groups.Select(g => new TabGroupBackupModel
-							{
-								Name = g.Name, 
-								GroupColor = g.GroupColor, 
-								Tabs = g.Tabs.ToDictionary(x => x.Id, y => y.Info.Url)
-							}).ToArray()
-						});
-
-					var backup = new AppBackupModel
-					{
-						Windows = windows.ToArray(),
-					};
-		
+					var backup = BuildBackup();
 					await FoxyFileManager.SaveToFileAsync(BackupPath, backup); // saving to appdata, not cache
 				}
 				catch (Exception e)
@@ -129,4 +121,27 @@ public static class BackupManagement
 		}
 		
 	}
+
+	private static AppBackupModel BuildBackup() => new()
+	{
+		Windows =
+		[
+			..from instance in AppServer.Instances
+			from window in instance.Windows
+			select new WindowBackupModel
+			{
+				InstanceName = instance.Name,
+				State = window.StateFromWindow(),
+				Bounds = window.GetBounds(),
+				ActiveTabId = window.TabManager.ActiveTabId,
+				Tabs = window.TabManager.Tabs.ToDictionary(x => x.Id, y => y.Info.Url),
+				TabGroups = window.TabManager.Groups.Select(g => new TabGroupBackupModel
+				{
+					Name = g.Name,
+					GroupColor = g.GroupColor,
+					Tabs = g.Tabs.ToDictionary(x => x.Id, y => y.Info.Url)
+				}).ToArray()
+			}
+		],
+	};
 }

@@ -78,7 +78,6 @@ public abstract class WidgetBase : UserControl
     
     protected abstract Task Initialize();
     
-    /// <summary>Current value of every <see cref="Setting{T}"/> in <see cref="WidgetSettings"/>, keyed by name (what gets saved).</summary>
     public Dictionary<string, object> GetSettingsMap()
     {
         var settingsMap = new Dictionary<string, object>();
@@ -93,6 +92,7 @@ public abstract class WidgetBase : UserControl
         return settingsMap;
     }
 
+    // Claude Doc
     /// <summary>The <c>T</c> of the <see cref="Setting{T}"/> a concrete setting (e.g. <see cref="BoolSetting"/>) derives from.</summary>
     private static Type? GetSettingValueType(Type settingType)
     {
@@ -113,7 +113,7 @@ public abstract class WidgetBase : UserControl
             var value = rawValue switch
             {
                 null => null,
-                // values loaded from json arrive as JsonElement, never as the setting's own type
+                //C values loaded from json arrive as JsonElement, never as the setting's own type
                 JsonElement json => json.Deserialize(valueType, FoxyFileManager.FoxyJsonSerializerOptions),
                 _ when valueType.IsInstanceOfType(rawValue) => rawValue,
                 _ => Convert.ChangeType(rawValue, valueType),
@@ -124,6 +124,7 @@ public abstract class WidgetBase : UserControl
         catch { /* a stale or mistyped saved value just keeps the default */ }
     }
 
+    // Claude Doc
     /// <summary>
     /// Raised when the widget wants its settings written to disk outside edit mode (e.g. a note was typed).
     /// Ignored while editing — the edit-mode Save/Exit options decide what is kept.
@@ -131,9 +132,9 @@ public abstract class WidgetBase : UserControl
     internal event Action<WidgetBase>? SaveRequested;
     protected void RequestSave() => SaveRequested?.Invoke(this);
 
-    /// <summary>Opens <paramref name="urlOrSearch"/> in a new tab and switches to it.</summary>
     protected void OpenInNewTab(string urlOrSearch) => TabManager.SwapActiveTabTo(TabManager.AddTab(urlOrSearch));
 
+    // Claude Doc
     /// <summary>
     /// UI-thread timer that ticks once immediately and then every <paramref name="interval"/>, but only while the
     /// widget is in the visual tree, so removed or reloaded widgets stop ticking.
@@ -148,16 +149,12 @@ public abstract class WidgetBase : UserControl
         return timer;
     }
 
-    /// <summary>Standard widget card look: translucent background, subtle border.</summary>
     protected void ApplyCardTheme(Border card)
     {
         card.Background = new SolidColorBrush(CurrentTheme.PrimaryBackgroundColorVeryTransparent);
         card.BorderBrush = new SolidColorBrush(CurrentTheme.SecondaryBackgroundColorSlightTransparent);
     }
 
-    /// <summary>
-    /// <paramref name="size"/>-square favicon that falls back to a globe icon when the url is empty or fails to load.
-    /// </summary>
     protected static FrameworkElement CreateFavicon(string? iconUrl, double size, Brush fallbackBrush)
     {
         var fallback = new MaterialIcon { Kind = MaterialIconKind.Web, Foreground = fallbackBrush, Width = size, Height = size };
@@ -178,6 +175,7 @@ public abstract class WidgetBase : UserControl
         return new Grid { Width = size, Height = size, Children = { fallback, image } };
     }
 
+    // Claude Doc
     /// <summary>Adds https:// when the user typed a bare domain; returns null for anything unusable.</summary>
     protected static Uri? NormalizeUrl(string? text)
     {

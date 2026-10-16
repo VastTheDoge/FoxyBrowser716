@@ -8,6 +8,7 @@ using Microsoft.Web.WebView2.Core;
 
 namespace FoxyBrowser716.Controls.SettingsPage.SettingsCustomControls;
 
+// Claude Doc
 /// <summary>
 /// The per-site permission manager: every remembered decision grouped by site, with Allow/Block/Forget,
 /// plus the decisions the browser engine stored on its own (from before this manager existed, or from its
@@ -59,7 +60,7 @@ public sealed partial class SitePermissionsController : ThemedUserControl
 			var webview = _mainWindow.ExtensionPopupWebview;
 			if (webview.CoreWebView2?.Profile is not { } profile)
 			{
-				// the settings page is built before the window's WebView2 exists; load once it does
+				//C the settings page is built before the window's WebView2 exists; load once it does
 				if (!_waitingForEngine)
 				{
 					_waitingForEngine = true;

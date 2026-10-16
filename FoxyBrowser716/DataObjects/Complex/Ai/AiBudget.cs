@@ -2,15 +2,19 @@ using FoxyBrowser716.DataManagement;
 
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
+// Claude Doc
 /// <summary>What <see cref="AiBudget"/> saves: the cap, the reset day and spending per day.</summary>
 public sealed partial class AiBudgetData : ObservableObject
 {
+	// Claude Doc
 	/// <summary>What the user expects to spend on Claude per period, in US dollars.</summary>
 	[ObservableProperty] public partial decimal MonthlyCapUsd { get; set; } = 100m;
 
+	// Claude Doc
 	/// <summary>Day of the month a new period starts, 1-31 (short months use their last day).</summary>
 	[ObservableProperty] public partial int ResetDay { get; set; } = 1;
 
+	// Claude Doc
 	/// <summary>
 	/// Estimated spend per day ("yyyy-MM-dd" → $). Kept per day rather than as one running total, so moving the reset
 	/// day re-counts the period correctly. Replace the dictionary to save.
@@ -18,6 +22,7 @@ public sealed partial class AiBudgetData : ObservableObject
 	[ObservableProperty] public partial Dictionary<string, decimal> Daily { get; set; } = [];
 }
 
+// Claude Doc
 /// <summary>
 /// Estimated Claude spending by this browser, against a monthly cap that resets on a chosen day. A normal API key
 /// can't read the real balance, so this adds up the cost estimates of every Claude response (chats and quick
@@ -32,9 +37,9 @@ public static class AiBudget
 
 	private static Task? _loading;
 
-	/// <summary>Raised after spending, the cap or the reset day changes.</summary>
 	public static event Action? Changed;
 
+	// Claude Doc
 	/// <summary>Loads the saved budget once; safe to call from every window.</summary>
 	public static Task EnsureLoaded() => _loading ??= AppServer.AutoSaver.AddItem(Field);
 
@@ -60,21 +65,19 @@ public static class AiBudget
 		Changed?.Invoke();
 	}
 
-	/// <summary>Adds the cost of a Claude response to today.</summary>
 	public static void Add(decimal costUsd)
 	{
 		if (Data is not { } data || costUsd <= 0) return;
 		var today = DateTime.Now.ToString(DayFormat);
 		var cutoff = DateTime.Now.AddDays(-62).ToString(DayFormat);
 
-		// a new dictionary, so the saver sees the change; days older than two periods are dropped
+		//C a new dictionary, so the saver sees the change; days older than two periods are dropped
 		var daily = data.Daily.Where(d => string.CompareOrdinal(d.Key, cutoff) >= 0).ToDictionary();
 		daily[today] = daily.GetValueOrDefault(today) + costUsd;
 		data.Daily = daily;
 		Changed?.Invoke();
 	}
 
-	/// <summary>Forgets this period's spending (for example after topping up, or to start counting from now).</summary>
 	public static void ClearPeriod()
 	{
 		if (Data is not { } data) return;
@@ -83,7 +86,6 @@ public static class AiBudget
 		Changed?.Invoke();
 	}
 
-	/// <summary>Spending in the current period, the cap, and when the next period starts.</summary>
 	public static (decimal Spent, decimal Cap, DateTime Start, DateTime NextReset) Current()
 	{
 		var now = DateTime.Now;
@@ -94,13 +96,13 @@ public static class AiBudget
 		return (spent, Cap, start, next);
 	}
 
-	/// <summary>The latest reset day on or before <paramref name="now"/>.</summary>
 	private static DateTime PeriodStart(DateTime now, int resetDay)
 	{
 		var start = DayIn(now, resetDay);
 		return now.Date >= start ? start : DayIn(now.AddMonths(-1), resetDay);
 	}
 
+	// Claude Doc
 	/// <summary>The reset day in <paramref name="month"/>'s month, or that month's last day if it's shorter.</summary>
 	private static DateTime DayIn(DateTime month, int resetDay) =>
 		new(month.Year, month.Month, Math.Min(resetDay, DateTime.DaysInMonth(month.Year, month.Month)));

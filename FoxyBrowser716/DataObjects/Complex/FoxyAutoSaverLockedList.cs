@@ -2,6 +2,7 @@ using FoxyBrowser716.DataManagement;
 
 namespace FoxyBrowser716.DataObjects.Complex;
 
+// Claude Doc
 /// <summary>
 /// An auto-saved list for data that changes often (history, downloads, site permissions).
 /// Unlike <see cref="FoxyAutoSaverList{T}"/>, every read and write goes through a lock and saves serialize a
@@ -24,6 +25,7 @@ public sealed class FoxyAutoSaverLockedList<T> : IFoxyAutoSaverItem where T : cl
 		_priority = priority;
 	}
 
+	// Claude Doc
 	/// <summary>Runs <paramref name="read"/> under the lock and returns its result. Do not keep the list reference.</summary>
 	public TResult Read<TResult>(Func<List<T>, TResult> read)
 	{
@@ -31,7 +33,6 @@ public sealed class FoxyAutoSaverLockedList<T> : IFoxyAutoSaverItem where T : cl
 			return read(_items);
 	}
 
-	/// <summary>Changes the list under the lock, then queues a save.</summary>
 	public void Mutate(Action<List<T>> mutate)
 	{
 		lock (_sync)
@@ -67,7 +68,7 @@ public sealed class FoxyAutoSaverLockedList<T> : IFoxyAutoSaverItem where T : cl
 		}
 		catch (Exception e)
 		{
-			// This data is not worth failing startup over: keep the unreadable file aside and start empty.
+			//C This data is not worth failing startup over: keep the unreadable file aside and start empty.
 			ErrorHandeler.FoxyLogger.AddError(e);
 			try { File.Copy(_filePath, _filePath + ".unreadable", true); } catch { /* best effort */ }
 		}

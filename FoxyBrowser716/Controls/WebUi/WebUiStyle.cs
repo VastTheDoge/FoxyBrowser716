@@ -3,6 +3,7 @@ using Material.Icons.WinUI3;
 
 namespace FoxyBrowser716.Controls.WebUi;
 
+// Claude Doc
 /// <summary>
 /// Shared building blocks for the code-built web UI (prompts, downloads, history, toasts) so they match the
 /// rest of FoxyBrowser: rounded 2px borders, translucent primary background, F-controls for buttons.
@@ -17,6 +18,7 @@ internal static class WebUiStyle
 		Child = child,
 	};
 
+	// Claude Doc
 	/// <param name="solid">Less transparent, for cards drawn over web content.</param>
 	public static void ApplyCardTheme(Border card, Theme theme, bool solid)
 	{
@@ -34,11 +36,12 @@ internal static class WebUiStyle
 		VerticalAlignment = VerticalAlignment.Center,
 	};
 
-	public static FIconButton IconButton(MaterialIconKind kind, Action onClick, double size = 24, double padding = 3)
+	public static FIconButton IconButton(MaterialIconKind kind, Action onClick, double size = 24, double padding = 3, string? toolTip = null)
 	{
 		var button = new FIconButton
 		{
 			Content = new MaterialIcon { Kind = kind },
+			ToolTipText = toolTip,
 			Width = size,
 			Height = size,
 			Padding = new Thickness(padding),
@@ -65,13 +68,13 @@ internal static class WebUiStyle
 		return button;
 	}
 
-	/// <summary>Theme for buttons that delete or cancel something (red hover, like the window close button).</summary>
 	public static Theme DangerTheme(Theme theme) => theme with
 	{
 		SecondaryForegroundColor = theme.NoColor,
 		PrimaryHighlightColor = theme.NoColor,
 	};
 
+	// Claude Doc
 	/// <summary>Colors a MaterialIcon used as a button's icon (FTextButton does not forward Foreground to it).</summary>
 	public static void ThemeIcon(UIElement? icon, Color color)
 	{
@@ -79,6 +82,7 @@ internal static class WebUiStyle
 			materialIcon.Foreground = new SolidColorBrush(color);
 	}
 
+	// Claude Doc
 	/// <summary>
 	/// Two-step confirm for destructive buttons: the first click changes the label, a second click within a few
 	/// seconds runs <paramref name="action"/>.
@@ -116,7 +120,6 @@ internal static class WebUiStyle
 		};
 	}
 
-	/// <summary>"2 minutes ago" style for recent times, otherwise the date.</summary>
 	public static string FormatRelative(DateTime time)
 	{
 		var span = DateTime.Now - time;
@@ -127,6 +130,7 @@ internal static class WebUiStyle
 		return time.ToShortDateString();
 	}
 
+	// Claude Doc
 	/// <summary>
 	/// PasswordBox has no F-control equivalent; restyle it through its lightweight-styling resources so the
 	/// hover/focus states also use theme colors instead of the system ones.

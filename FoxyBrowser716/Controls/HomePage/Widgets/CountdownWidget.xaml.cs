@@ -38,7 +38,7 @@ public partial class CountdownWidget : WidgetBase
 	private void ParseTarget()
 	{
 		var text = _targetText.Trim();
-		// accept ISO-style dates everywhere, then whatever the user's locale writes dates as
+		//C accept ISO-style dates everywhere, then whatever the user's locale writes dates as
 		_target = DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var d)
 		          || DateTime.TryParse(text, CultureInfo.CurrentCulture, DateTimeStyles.AllowWhiteSpaces, out d)
 			? d
@@ -57,13 +57,13 @@ public partial class CountdownWidget : WidgetBase
 
 		var now = DateTime.Now;
 		var passed = now >= target;
-		// once the date passes, keep counting upward rather than sitting at zero
+		//C once the date passes, keep counting upward rather than sitting at zero
 		var span = passed ? now - target : target - now;
 		if (!passed && !_showSeconds) span += TimeSpan.FromSeconds(59); // round minutes up so 00 min means "now"
 
 		TitleText.Text = (string.IsNullOrWhiteSpace(_title) ? "Countdown" : _title) + (passed ? " (since)" : "");
 		DaysText.Text = ((int)span.TotalDays).ToString(CultureInfo.CurrentCulture);
-		// a column fits three 34pt digits; shrink beyond that instead of clipping
+		//C a column fits three 34pt digits; shrink beyond that instead of clipping
 		DaysText.FontSize = DaysText.Text.Length > 3 ? 34.0 * 3 / DaysText.Text.Length : 34;
 		HoursText.Text = span.Hours.ToString("00");
 		MinutesText.Text = span.Minutes.ToString("00");

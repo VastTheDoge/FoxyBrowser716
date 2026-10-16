@@ -959,13 +959,13 @@ public sealed partial class HomePage : UserControl
     {
         if (_blockOverlayButtonEvents) return;
         
-        // settings apply live through their callbacks; the edit-mode Save option persists them
+        //C settings apply live through their callbacks; the edit-mode Save option persists them
         _mainWindow.OpenSettings([new HeaderSetting($"{s.AttachedWidget.LayoutData.Name} Settings"), ..s.AttachedWidget.WidgetSettings]);
     }
 
     private async void WidgetSaveRequested(WidgetBase widget)
     {
-        // while editing, writing now would also commit unsaved layout changes
+        //C while editing, writing now would also commit unsaved layout changes
         if (InEditMode) return;
         await SaveWidgetsToJson();
     }

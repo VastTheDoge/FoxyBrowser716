@@ -5,6 +5,9 @@ namespace FoxyBrowser716.DataObjects.Basic;
 public record AppBackupModel
 {
     public WindowBackupModel[] Windows { get; set; } = [];
+
+    //C false while the browser runs (crash backup, always restored); true once the last window closed normally
+    public bool ClosedCleanly { get; set; }
 }
 
 public record WindowBackupModel

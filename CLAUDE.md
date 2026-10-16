@@ -28,7 +28,7 @@ the solution.)
 | Themed web UI | `Controls/WebUi/` — code-built replacements for WebView2's UI: `WebPromptHost`/`WebPromptCard` (permission, alert/confirm/prompt, sign-in), `DownloadsPanel`, `HistoryPanel`, `ToastHost`, `WebUiStyle`. See `Docs/architecture/web-ui.md` |
 | Home page + widgets | `Controls/HomePage/` — `HomePage`, `Widget`, `WidgetEditOverlay`, `Widgets/` (`DateTime`, `SpeedTest`, `Title`, `Example`) |
 | Settings UI | `Controls/SettingsPage/` (+ `SettingsCustomControls/`: `ExtensionController`, `SitePermissionsController`, `BrowsingDataController`, `AiToolPermissionsController`) |
-| Reusable controls | `Controls/Generic/` — `F`-prefixed primitives (`FIconButton`, `FTextButton`, `FTextInput`, `FDropdown`, `FRGBInput`, `FContextMenu`, `FCheckBox`, `FProgressBar`, `FoxyPopup`, `FTODO`, `TransparentWindow`) |
+| Reusable controls | `Controls/Generic/` — `F`-prefixed primitives (`FIconButton`, `FTextButton`, `FTextInput`, `FDropdown`, `FRGBInput`, `FContextMenu`, `FCheckBox`, `FToolTip`, `FProgressBar`, `FoxyPopup`, `FTODO`, `TransparentWindow`) |
 | Converters / helpers | `Controls/Helpers/` — value converters, `Animator`, `VisualCaptureHelper` |
 | Static data | `StaticData/` — `DefaultThemes`, `InfoGetter` |
 | Styles / assets | `Themes/Generic.xaml` (default control resources), `Assets/` (icons + MSIX tiles) |
@@ -76,6 +76,23 @@ For NuGet package APIs (both default `-Project FoxyBrowser716`, so `-Project` is
 - **WinUI caveat:** `-Package` reflection can fail to resolve WinRT projection assemblies
   (`Microsoft.Windows.SDK.NET`) that live in the build output, not the package cache. For those, run
   `-Dll` against the built copy under `bin\...\win-x64\`, where the projections sit as siblings.
+
+## Code conventions
+
+- **Comments are rare.** The test: without the comment, would a reader delete or "fix" the code
+  (drop a guard, reorder two calls, move work back onto the UI thread)? If not, no comment. Never say
+  what a line does, never label sections, never record history (that is the commit message).
+- **Inline comments:** every Claude-written comment line is `//C <text>`: one line where possible,
+  present tense, the constraint that still holds today.
+- **XML doc comments:** on a type, or on a public member whose contract the signature can't show
+  (thread affinity, what null means, what throws, units or coordinate space). A `// Claude Doc` line
+  goes directly above the `///` block:
+  ```csharp
+  // Claude Doc
+  /// <summary>Raised on whichever thread made the change; only touch UI state after dispatching.</summary>
+  ```
+  Nothing on a member whose name already says it. These feed `Docs/api/`.
+- **Existing comments** (any format) are left alone unless the code they sit on is being edited.
 
 ## Documentation index
 

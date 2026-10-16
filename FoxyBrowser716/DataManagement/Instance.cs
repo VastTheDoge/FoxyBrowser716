@@ -56,8 +56,32 @@ public partial class Instance : ObservableObject
 		set => SetProperty(ref field, value, nameof(Bookmarks));
 	}
 	
+	public bool IsPinned(string url) => FindPage(Pins, url) is not null;
+	public bool IsBookmarked(string url) => FindPage(Bookmarks, url) is not null;
+	public void TogglePin(WebsiteInfo page) => TogglePage(Pins, page);
+	public void ToggleBookmark(WebsiteInfo page) => TogglePage(Bookmarks, page);
+
+	private static WebsiteInfo? FindPage(ObservableCollection<WebsiteInfo> list, string url) =>
+		list.FirstOrDefault(p => string.Equals(p.Url, url, StringComparison.CurrentCultureIgnoreCase));
+
+	//C stores a copy: the tab's own WebsiteInfo would make the pin/bookmark follow the tab as it navigates
+	private static void TogglePage(ObservableCollection<WebsiteInfo> list, WebsiteInfo page)
+	{
+		if (FindPage(list, page.Url) is { } existing)
+			list.Remove(existing);
+		else
+			list.Add(new WebsiteInfo
+			{
+				Url = page.Url,
+				Title = page.Title,
+				FavIconUrl = page.FavIconUrl,
+				DateAdded = DateTime.Now,
+			});
+	}
+
 	public bool IsPrimaryInstance => Name == AppServer.PrimaryInstance.Name;
 
+	// Claude Doc
 	/// <summary>
 	/// Every tab of this instance runs InPrivate (<see cref="BrowserSettings.PrivateBrowsing"/>, read once at startup so
 	/// all of the instance's windows share one mode).
@@ -143,6 +167,7 @@ public partial class Instance : ObservableObject
 		if (DefaultThemeObject.Themes.TryGetValue(Settings.ThemeName, out var theme)) CurrentTheme = theme;
 	}
 	
+	// Claude Doc
 	/// <param name="startLocation">Window bounds in physical screen pixels, see <see cref="MainWindow.ApplyBounds"/>.</param>
 	public async Task<MainWindow> CreateWindow(string[]? urls = null, Rect? startLocation = null, MainWindow.BrowserWindowState windowState = MainWindow.BrowserWindowState.Normal)
 	{
@@ -167,15 +192,15 @@ public partial class Instance : ObservableObject
 			};
 			newWindow.Closed += (w, _) =>
 			{
+				//C saved before removal so the last window is in it; StartupMode decides on next start whether it comes back
+				if (AppServer.Instances.All(i => i.Windows.All(x => x == w)))
+					BackupManagement.SaveOnLastWindowClosing();
+
 				if (w is MainWindow baw)
 					Windows.Remove(baw);
 				else
 					throw new InvalidOperationException(
 						$"Cannot remove browser application window from instance '{Name}', sender type mismatch.");
-
-				// last window closed
-				if (AppServer.Instances.All(i => i.Windows.Count == 0))
-					BackupManagement.ClearBackup(); 
 			};
 
 			newWindow.SearchEngineChangeRequested += (se) => { Cache.CurrentSearchEngine = se; };

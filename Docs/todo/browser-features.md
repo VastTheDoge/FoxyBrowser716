@@ -17,10 +17,10 @@ pass is deliberately **last**.
 and never sets `args.NewWindow`, so the popup has no opener. OAuth popups ("Sign in with Google/Microsoft/Apple") and
 payment/3-D Secure popups that `postMessage` back to the opener fail.
 
-- [ ] Take a deferral, create the tab **without navigating it**, `EnsureCoreWebView2Async` with the same environment
+- [x] Take a deferral, create the tab **without navigating it**, `EnsureCoreWebView2Async` with the same environment
       (and the InPrivate controller options in a private instance), set `args.NewWindow = tab.Core.CoreWebView2`,
       `args.Handled = true`, complete the deferral. WebView2 then navigates the new view itself.
-- [ ] Popups open as a **new tab** (the user's preference), so `args.WindowFeatures` (requested size/position) can stay
+- [x] Popups open as a **new tab** (the user's preference), so `args.WindowFeatures` (requested size/position) can stay
       ignored. A small popup window like Chrome's might be fine later, as an option, not the default.
 - [ ] Test: Google sign-in popup on a third-party site, a PayPal checkout popup, and the same in a private instance.
 
@@ -28,11 +28,12 @@ payment/3-D Secure popups that `postMessage` back to the opener fail.
 
 `NewWebviewTab.IsPlayingAudio` / `IsMuted` (`DataObjects/WebviewTab/WTMain.cs`) are unused stubs.
 
-- [ ] Speaker icon on the tab card while `CoreWebView2.IsDocumentPlayingAudio` (`IsDocumentPlayingAudioChanged`).
-- [ ] Hovering the icon shows a volume slider for that tab; click toggles mute (`CoreWebView2.IsMuted`).
-- [ ] Note: WebView2 only has mute, no per-tab volume API. Volume would have to be injected script (scale
+- [x] Speaker icon on the tab card while `CoreWebView2.IsDocumentPlayingAudio` (`IsDocumentPlayingAudioChanged`).
+- [x] Hovering the icon shows a volume slider for that tab; click toggles mute (`CoreWebView2.IsMuted`).
+- [x] Note: WebView2 only has mute, no per-tab volume API. Volume would have to be injected script (scale
       `<audio>`/`<video>` `volume`, wrap Web Audio output in a gain node) via `AddScriptToExecuteOnDocumentCreatedAsync`.
-      Decide how far to go (media elements only vs Web Audio too) when implementing.
+      Decide how far to go (media elements only vs Web Audio too) when implementing. Done: media elements only.
+- [ ] Test: badge and mute on YouTube; the volume slider on a `<video>` page and on an embedded iframe player.
 
 ## 3. Reopen closed tabs — dropped
 
@@ -96,10 +97,10 @@ Adding already works: the sidebar's bookmark card toggles the current page (`New
 
 ## 9. Menus and settings
 
-- [ ] ☰ menu: Find in page, Print, Save page as, Zoom (once §11 works), Share.
-- [ ] Tab right-click menu (today: Close, Duplicate, group moves): Reload, Pin, Mute, Close others, Close tabs to the
+- [x] ☰ menu: Find in page, Print, Save page as, Share. Zoom waits on §11.
+- [x] Tab right-click menu (today: Close, Duplicate, group moves): Reload, Pin, Mute, Close others, Close tabs to the
       right, Move to new window, Bookmark.
-- [ ] Startup setting: continue where I left off / open the home page / open specific pages. Today session restore
+- [x] Startup setting: continue where I left off / open the home page / open specific pages. Today session restore
       always runs off the 5 s backup timer (`BackupManagement`).
 - [ ] Proxy and DNS-over-HTTPS settings (environment-wide, via `AdditionalBrowserArguments` in `TabManager`).
 

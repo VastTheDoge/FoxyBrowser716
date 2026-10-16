@@ -36,9 +36,9 @@ settings moved into the panel. The 2026-10-12 changes build but haven't been run
 - [ ] OpenAI-compatible against a local server (Ollama/LM Studio) with a tool-capable model.
 
 ## Follow-ups
-- [ ] Persist chats across restarts (`AiHandler` TODO).
-- [ ] Stop button / cancel a reply (providers already take a `CancellationToken`).
-- [ ] Throttle `MarkdownTextBlock` re-renders while streaming (every delta re-parses the whole reply).
+- [x] Persist chats across restarts (`AiHandler` TODO).
+- [x] Stop button / cancel a reply (providers already take a `CancellationToken`).
+- [x] Throttle `MarkdownTextBlock` re-renders while streaming (every delta re-parses the whole reply).
 - [ ] More browser tools: search history, bookmarks, downloads.
-- [ ] Pages that scroll an inner container instead of the window: `scroll_page` up/down does nothing there (scrolling to a ref works).
+- [x] Pages that scroll an inner container instead of the window: `scroll_page` up/down does nothing there (scrolling to a ref works).
 - [ ] Effort levels per model: older models (4.6) reject Extra high; could read `capabilities` from the Models API.

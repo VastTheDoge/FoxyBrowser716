@@ -18,6 +18,7 @@ public sealed partial class FContextMenu : UserControl
 
     internal Theme CurrentTheme { get; set { field = value; ApplyTheme(); } } = DefaultThemes.DarkMode;
 
+    // Claude Doc
     /// <summary>
     /// Use the less transparent background. Set for menus drawn over web content, where the usual
     /// very transparent background makes text hard to read.
@@ -151,6 +152,7 @@ public sealed partial class FContextMenu : UserControl
 
     public void Close() => _popup.IsOpen = false;
 
+    // Claude Doc
     /// <summary>
     /// Places the open menu at <paramref name="position"/> (in the coordinates of this control's parent) while
     /// keeping it inside <paramref name="bounds"/>: it shifts left at the right edge and opens upward near the bottom.
@@ -199,14 +201,14 @@ public sealed partial class FContextMenu : UserControl
 
     private void CreateMixedLayout(MenuItem[] items)
     {
-        // if any item shows an icon (or a check mark), give the others an invisible one so the labels line up
+        //C if any item shows an icon (or a check mark), give the others an invisible one so the labels line up
         var alignLabels = items.Any(i => i.Icon is not null || i.IsChecked is not null);
 
         foreach (var item in items)
         {
             if (item.IsSeparator)
             {
-                // a separator at either end, or two in a row, is just noise
+                //C a separator at either end, or two in a row, is just noise
                 if (_stackPanel.Children.Count == 0 || _stackPanel.Children[^1] is Border) continue;
 
                 _stackPanel.Children.Add(new Border
@@ -274,9 +276,9 @@ public sealed partial class FContextMenu : UserControl
 
         public bool CloseOnClick { get; set; }
 
-        /// <summary>Disabled items are shown dimmed and cannot be clicked.</summary>
         public bool IsEnabled { get; set; } = true;
 
+        // Claude Doc
         /// <summary>null for a normal item; true/false for a check or radio item.</summary>
         public bool? IsChecked { get; set; }
 
@@ -309,7 +311,6 @@ public sealed partial class FContextMenu : UserControl
 
         private MenuItem() { }
 
-        /// <summary>A thin divider line between groups of items.</summary>
         public static MenuItem Separator() => new() { IsSeparator = true };
 
         public bool IsIconOnly => Icon != null && string.IsNullOrEmpty(Text);

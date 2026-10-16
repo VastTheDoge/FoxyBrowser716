@@ -1,10 +1,12 @@
 using System.ComponentModel;
+using System.Text.Json.Nodes;
 using System.Threading;
 using FoxyBrowser716.ErrorHandeler;
 using FoxyBrowser716.DataObjects.Settings;
 
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
+// Claude Doc
 /// <summary>Which service a model runs on. Each has its own settings in the panel's settings view.</summary>
 public enum AiProviderKind
 {
@@ -12,15 +14,14 @@ public enum AiProviderKind
 	[Description("OpenAI-compatible")] OpenAiCompatible,
 }
 
-/// <summary>A model on a provider, as picked in the panel's model menu and stored in settings.</summary>
 public sealed record AiModelChoice(AiProviderKind Provider, string Model)
 {
 	public static AiModelChoice Default => new(AiProviderKind.Claude, ClaudeConversation.DefaultModel);
 
-	/// <summary>The default small model for quick jobs such as naming tab groups.</summary>
 	public static AiModelChoice DefaultQuick => new(AiProviderKind.Claude, ClaudeConversation.QuickModel);
 }
 
+// Claude Doc
 /// <summary>How hard the model thinks before answering (Claude's <c>output_config.effort</c>).</summary>
 public enum AiEffort
 {
@@ -33,23 +34,29 @@ public enum AiEffort
 
 public enum AiRole { User, Assistant }
 
+// Claude Doc
 /// <summary>What a tool does, which decides whether it needs the user's approval (see <see cref="AiPermissions"/>).</summary>
 public enum AiToolKind
 {
+	// Claude Doc
 	/// <summary>Only looks: tab list, page text, scrolling.</summary>
 	Read,
+	// Claude Doc
 	/// <summary>Changes something: clicks, typing, navigating, opening or closing tabs.</summary>
 	Action,
+	// Claude Doc
 	/// <summary>Runs arbitrary JavaScript in a page.</summary>
 	Script,
 }
 
+// Claude Doc
 /// <summary>What a tool hands back to the model: text, plus an image for tools that look at the screen.</summary>
 public sealed record AiToolOutput(string Text, byte[]? Image = null, string ImageMediaType = "image/jpeg")
 {
 	public static implicit operator AiToolOutput(string text) => new(text);
 }
 
+// Claude Doc
 /// <summary>A tool the assistant can call. The schema is plain JSON Schema so every provider can send it as-is.</summary>
 /// <param name="Title">Short human name, for settings and approval cards.</param>
 /// <param name="Execute">Runs on the UI thread. Throw <see cref="AiToolException"/> to hand the model an error result.</param>
@@ -62,9 +69,11 @@ public sealed record AiTool(
 	IReadOnlyList<string> Required,
 	Func<IReadOnlyDictionary<string, JsonElement>, Task<AiToolOutput>> Execute)
 {
+	// Claude Doc
 	/// <summary>Returns an image, so it's only offered to providers that can send images back to the model (Claude).</summary>
 	public bool ReturnsImage { get; init; }
 
+	// Claude Doc
 	/// <summary>
 	/// Plain-language summary of one call for the approval card ("Click button "Buy" on example.com"). May throw
 	/// <see cref="AiToolException"/> (e.g. a stale element ref) to fail the call before the user is asked.
@@ -73,9 +82,9 @@ public sealed record AiTool(
 	public Func<IReadOnlyDictionary<string, JsonElement>, Task<string>>? Describe { get; init; }
 }
 
-/// <summary>A tool call waiting for the user's Allow / Deny.</summary>
 public sealed record AiApprovalRequest(string Title, string Description);
 
+// Claude Doc
 /// <summary>Token counts for one or more responses. <see cref="CostUsd"/> is null when the model's price is unknown.</summary>
 public sealed record AiUsage(long InputTokens, long OutputTokens, long CacheReadTokens, long CacheWriteTokens, decimal? CostUsd)
 {
@@ -91,23 +100,29 @@ public sealed record AiUsage(long InputTokens, long OutputTokens, long CacheRead
 		CostUsd is { } a && other.CostUsd is { } b ? a + b : null);
 }
 
+// Claude Doc
 /// <summary>What a turn reports while it runs. All callbacks arrive on the caller's (UI) thread.</summary>
 public sealed class AiTurnCallbacks
 {
 	public Action<string>? Text { get; init; }
 	public Action<string>? ToolCall { get; init; }
+	// Claude Doc
 	/// <summary>Once per model response; a turn with tool calls has several.</summary>
 	public Action<AiUsage>? Usage { get; init; }
+	// Claude Doc
 	/// <summary>Asks the user to allow a tool call; resolves to their answer. Null: anything needing approval is denied.</summary>
 	public Func<AiApprovalRequest, Task<bool>>? Approve { get; init; }
 }
 
+// Claude Doc
 /// <summary>The provider isn't set up yet (missing key or model); the message tells the user what to fill in.</summary>
 public sealed class AiNotConfiguredException(string message) : Exception(message);
 
+// Claude Doc
 /// <summary>Thrown by a tool to return an error result to the model instead of failing the turn.</summary>
 public sealed class AiToolException(string message) : Exception(message);
 
+// Claude Doc
 /// <summary>
 /// One chat's history in the provider's own wire format, so nothing is lost converting between providers
 /// (Claude's thinking blocks must be sent back unchanged). History is append-only: a turn that fails or is
@@ -117,6 +132,7 @@ public sealed class AiToolException(string message) : Exception(message);
 /// </summary>
 public abstract class AiConversation
 {
+	// Claude Doc
 	/// <summary>Model calls per user message. Page tasks (read, click, read again, type...) take several.</summary>
 	protected const int MaxToolRounds = 25;
 
@@ -133,6 +149,32 @@ public abstract class AiConversation
 
 	public abstract AiProviderKind Kind { get; }
 
+	//C the provider-format history, for saving a chat; images are left out so files stay small
+	public abstract JsonArray ExportHistory();
+	public abstract void ImportHistory(JsonArray history);
+
+	//C tool results can hold screenshots; a saved chat keeps a note in their place
+	protected static void StripImages(JsonNode? node)
+	{
+		switch (node)
+		{
+			case JsonArray array:
+				for (var i = 0; i < array.Count; i++)
+				{
+					if (array[i] is JsonObject o && o["type"]?.GetValueKind() == JsonValueKind.String && o["type"]!.GetValue<string>() == "image")
+						array[i] = new JsonObject { ["type"] = "text", ["text"] = "(screenshot not kept in the saved chat)" };
+					else
+						StripImages(array[i]);
+				}
+				break;
+			case JsonObject obj:
+				foreach (var (_, value) in obj.ToList())
+					StripImages(value);
+				break;
+		}
+	}
+
+	// Claude Doc
 	/// <summary>Sends <paramref name="userMessage"/>, runs any tool calls, and streams the reply through <paramref name="callbacks"/>.</summary>
 	/// <param name="effort">Ignored by providers without an effort setting.</param>
 	public abstract Task SendAsync(string userMessage, string model, AiEffort effort, AiTurnCallbacks callbacks, CancellationToken cancellationToken = default);
@@ -144,6 +186,7 @@ public abstract class AiConversation
 		_ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
 	};
 
+	// Claude Doc
 	/// <summary>
 	/// One question, one short answer, no tools or history: for small jobs like naming a tab group. Returns the
 	/// reply text and what it cost.
@@ -156,6 +199,7 @@ public abstract class AiConversation
 			_ => throw new ArgumentOutOfRangeException(nameof(model), model.Provider, null),
 		};
 
+	// Claude Doc
 	/// <summary>Runs a tool by name; failures become an error result for the model rather than an exception.</summary>
 	protected async Task<(AiToolOutput Output, bool IsError)> RunToolAsync(string name, IReadOnlyDictionary<string, JsonElement> input)
 	{

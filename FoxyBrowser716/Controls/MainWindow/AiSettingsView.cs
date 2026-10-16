@@ -6,6 +6,7 @@ using FoxyBrowser716.DataObjects.Settings;
 
 namespace FoxyBrowser716.Controls.MainWindow;
 
+// Claude Doc
 /// <summary>
 /// The assistant's own settings, shown inside the chat panel (gear button): provider keys and server, the Claude
 /// budget, default permissions, the system prompt, and tab-group naming. The settings page only has the on/off switch. Keys and the
@@ -16,6 +17,7 @@ public sealed partial class AiSettingsView : ThemedUserControl
 	private readonly List<ThemedUserControl> _rows = [];
 	private readonly BudgetRow _budget;
 
+	// Claude Doc
 	/// <summary>A key or the server changed, so model lists should be fetched again.</summary>
 	public event Action? ConnectionChanged;
 
@@ -81,6 +83,9 @@ public sealed partial class AiSettingsView : ThemedUserControl
 			settings.AiSeeOtherInstances, on => settings.AiSeeOtherInstances = on)));
 
 		Add(new HeaderSettingControl(new HeaderSetting("Chat")));
+		Add(new BoolSettingControl(new BoolSetting("Save chats",
+			"Keep chats after FoxyBrowser closes so you can pick them up again from History. Off by default in a private instance. Turning it off stops saving new replies; chats already saved stay until you delete them.",
+			settings.AiSaveChatsEffective, on => settings.AiSaveChats = on)));
 		Add(new StringSettingControl(new StringSetting("System prompt",
 			"The instructions every new chat starts with. Changes apply to chats started afterwards; leave it empty to use the default.",
 			AiChat.SystemPrompt(settings),
@@ -113,7 +118,6 @@ public sealed partial class AiSettingsView : ThemedUserControl
 		foreach (var row in _rows) row.CurrentTheme = CurrentTheme;
 	}
 
-	/// <summary>This period's estimated spend, with a button to clear it.</summary>
 	private sealed partial class BudgetRow : BaseSettingControl
 	{
 		private readonly FTextButton _clear;

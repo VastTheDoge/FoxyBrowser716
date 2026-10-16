@@ -6,14 +6,13 @@ using Windows.Storage.Streams;
 
 namespace FoxyBrowser716.Controls.HomePage.Widgets;
 
-// Mirrors whatever Windows shows in its media flyout (Spotify, a YouTube tab, Media Player...) through the
-// global system media transport controls. Every WinRT call can throw once the app behind a session exits.
+//C Mirrors whatever Windows shows in its media flyout (Spotify, a YouTube tab, Media Player...) through the
+//C global system media transport controls. Every WinRT call can throw once the app behind a session exits.
 [WidgetInfo("Now Playing Widget", MaterialIconKind.MusicNote, WidgetCategory.Tools)]
 public partial class NowPlayingWidget : WidgetBase
 {
 	private const double ProgressWidth = 186; // the text column's fixed design width
 
-	// friendly names for common sources; anything else is derived from its app id
 	private static readonly (string key, string name)[] KnownApps =
 	[
 		("spotify", "Spotify"),
@@ -59,7 +58,7 @@ public partial class NowPlayingWidget : WidgetBase
 	protected override Task Initialize()
 	{
 		CreateLiveTimer(TimeSpan.FromMilliseconds(500), RenderProgress);
-		// session events keep native references to this widget, so only hold them while on screen
+		//C session events keep native references to this widget, so only hold them while on screen
 		Loaded += (_, _) =>
 		{
 			_active = true;
@@ -89,7 +88,7 @@ public partial class NowPlayingWidget : WidgetBase
 			finally { _requestingManager = false; }
 		}
 
-		// Unloaded may have run while the manager was being requested
+		//C Unloaded may have run while the manager was being requested
 		if (!_active || _manager is null) return;
 		if (!_managerSubscribed)
 		{
@@ -133,7 +132,7 @@ public partial class NowPlayingWidget : WidgetBase
 				}
 				catch
 				{
-					// the app closed while subscribing; drop whatever did attach, a session-changed event follows
+					//C the app closed while subscribing; drop whatever did attach, a session-changed event follows
 					DetachSession();
 				}
 			}
@@ -145,13 +144,13 @@ public partial class NowPlayingWidget : WidgetBase
 	{
 		if (_session is not { } session) return;
 		_session = null;
-		// separately, so one failure (app already gone) doesn't leave the other handlers attached
+		//C separately, so one failure (app already gone) doesn't leave the other handlers attached
 		try { session.MediaPropertiesChanged -= Session_OnMediaPropertiesChanged; } catch { /* app exited */ }
 		try { session.PlaybackInfoChanged -= Session_OnPlaybackInfoChanged; } catch { /* app exited */ }
 		try { session.TimelinePropertiesChanged -= Session_OnTimelinePropertiesChanged; } catch { /* app exited */ }
 	}
 
-	// all four events arrive on background threads; the sender check drops events queued by a session we've since left
+	//C all four events arrive on background threads; the sender check drops events queued by a session we've since left
 	private void Manager_OnCurrentSessionChanged(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args)
 		=> _ui.TryEnqueue(() =>
 		{
@@ -214,7 +213,7 @@ public partial class NowPlayingWidget : WidgetBase
 			}
 		}
 		catch { /* the app closed mid-query; a session-changed event follows */ }
-		// apps often fire several property changes per track; only the newest refresh gets to write
+		//C apps often fire several property changes per track; only the newest refresh gets to write
 		if (version != _mediaVersion) return;
 
 		TitleText.Text = string.IsNullOrWhiteSpace(title) ? "Unknown title" : title;
@@ -261,7 +260,7 @@ public partial class NowPlayingWidget : WidgetBase
 
 		if (playing != _playing || rate != _rate)
 		{
-			// re-anchor so the bar freezes (or resumes) where it is, even for apps that don't send a timeline update
+			//C re-anchor so the bar freezes (or resumes) where it is, even for apps that don't send a timeline update
 			_position = CurrentPosition();
 			_positionAt = DateTimeOffset.Now;
 			_playing = playing;
@@ -284,7 +283,7 @@ public partial class NowPlayingWidget : WidgetBase
 		_hasTimeline = false;
 		try
 		{
-			// EndTime stays zero for sources that don't report a duration (most live streams, some players)
+			//C EndTime stays zero for sources that don't report a duration (most live streams, some players)
 			if (_session?.GetTimelineProperties() is { } timeline && timeline.EndTime > timeline.StartTime)
 			{
 				_start = timeline.StartTime;
@@ -292,7 +291,7 @@ public partial class NowPlayingWidget : WidgetBase
 				_position = timeline.Position;
 				var now = DateTimeOffset.Now;
 				var updated = timeline.LastUpdatedTime;
-				// some apps leave this unset or skewed; extrapolating from it would pin the bar to the end
+				//C some apps leave this unset or skewed; extrapolating from it would pin the bar to the end
 				_positionAt = updated > now - TimeSpan.FromDays(1) && updated <= now + TimeSpan.FromSeconds(5) ? updated : now;
 				_hasTimeline = true;
 			}
@@ -339,7 +338,7 @@ public partial class NowPlayingWidget : WidgetBase
 		if (_session is not { } session) return;
 		try
 		{
-			// not every app implements the toggle; fall back to the explicit command
+			//C not every app implements the toggle; fall back to the explicit command
 			if (!await session.TryTogglePlayPauseAsync())
 				await (_playing ? session.TryPauseAsync() : session.TryPlayAsync());
 		}
@@ -355,7 +354,7 @@ public partial class NowPlayingWidget : WidgetBase
 
 	private static void SetButtonEnabled(FIconButton button, bool enabled)
 	{
-		// FIconButton raises clicks from raw pointer events, so stop hit-testing rather than relying on IsEnabled
+		//C FIconButton raises clicks from raw pointer events, so stop hit-testing rather than relying on IsEnabled
 		button.IsHitTestVisible = enabled;
 		button.Opacity = enabled ? 1 : 0.35;
 	}
@@ -378,6 +377,7 @@ public partial class NowPlayingWidget : WidgetBase
 	private static string FirstNonEmpty(params string?[] values) =>
 		values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? "";
 
+	// Claude Doc
 	/// <summary>"SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify" / "Spotify.exe" / "MSEdge" → a readable app name.</summary>
 	private static string PrettifyAppId(string? appId)
 	{
@@ -389,7 +389,7 @@ public partial class NowPlayingWidget : WidgetBase
 		var bang = id.IndexOf('!');
 		if (bang >= 0)
 		{
-			// packaged app: "Publisher.AppName_publisherhash!EntryPoint"
+			//C packaged app: "Publisher.AppName_publisherhash!EntryPoint"
 			id = id[..bang];
 			var underscore = id.IndexOf('_');
 			if (underscore > 0) id = id[..underscore];
@@ -398,13 +398,13 @@ public partial class NowPlayingWidget : WidgetBase
 		}
 		else
 		{
-			// desktop app: an exe name, sometimes behind a (known-folder) path
+			//C desktop app: an exe name, sometimes behind a (known-folder) path
 			id = id[(id.LastIndexOfAny(['\\', '/']) + 1)..];
 			if (id.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) id = id[..^4];
 		}
 		if (id.Length == 0) return appId;
 
-		// "SpotifyMusic" -> "Spotify Music"
+		//C "SpotifyMusic" -> "Spotify Music"
 		var pretty = new StringBuilder(id.Length + 4);
 		for (var i = 0; i < id.Length; i++)
 		{

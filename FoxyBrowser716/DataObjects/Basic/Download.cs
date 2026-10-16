@@ -12,6 +12,7 @@ public enum DownloadStatus
 	Cancelled,
 }
 
+// Claude Doc
 /// <summary>
 /// A download shown in the downloads panel. The persisted fields survive restarts; <see cref="Operation"/> only
 /// exists while WebView2 is still running the download in this session.
@@ -37,6 +38,7 @@ public partial class Download : ObservableObject
 
 	[JsonIgnore] public string FileName => string.IsNullOrEmpty(FilePath) ? Url : Path.GetFileName(FilePath);
 
+	// Claude Doc
 	/// <summary>Still running (or paused) in this session, so pause/resume/cancel apply.</summary>
 	[JsonIgnore] public bool IsActive => Operation is not null && Status is DownloadStatus.InProgress or DownloadStatus.Paused;
 

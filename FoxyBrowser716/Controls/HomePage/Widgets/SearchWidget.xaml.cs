@@ -22,7 +22,7 @@ public partial class SearchWidget : WidgetBase
 
 	protected override Task Initialize()
 	{
-		// the search engine can be switched from the top bar at any time, so re-read it whenever we're used
+		//C the search engine can be switched from the top bar at any time, so re-read it whenever we're used
 		Loaded += (_, _) => RefreshEngineIcon();
 		SearchInput.GotFocus += (_, _) => RefreshEngineIcon();
 		ApplyTheme();
@@ -49,7 +49,6 @@ public partial class SearchWidget : WidgetBase
 	{
 		var text = SearchInput.CurrentText.Trim();
 		if (text.Length == 0) return;
-		// a dedicated engine always searches; the default box also accepts addresses, like the top bar
 		OpenInNewTab(_engine >= 0 ? InfoGetter.GetSearchUrl(CurrentEngine, text) : text);
 		SearchInput.SetText("");
 	}
@@ -62,14 +61,13 @@ public partial class SearchWidget : WidgetBase
 		var width = RootGrid.ActualWidth;
 		if (height <= 0 || width <= 0) return;
 
-		// the text box adds ~10px of border/padding around one line of text (~1.35x the font size);
-		// also cap by width so a tall, narrow widget still fits a few words
+		//C the text box adds ~10px of border/padding around one line of text (~1.35x the font size);
+		//C also cap by width so a tall, narrow widget still fits a few words
 		var fontSize = Math.Clamp(Math.Min((height - 10) / 1.35, width / 9), 8, 48);
 		SearchInput.FontSize = fontSize;
 
 		var iconSize = fontSize * 1.3;
 		EngineIcon.Width = EngineIcon.Height = iconSize;
-		// drop the icon before it squeezes the box into uselessness
 		EngineIcon.Visibility = _showEngineIcon && width > iconSize + fontSize * 8 ? Visibility.Visible : Visibility.Collapsed;
 	}
 }

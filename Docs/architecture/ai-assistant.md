@@ -7,7 +7,7 @@ The chat side panel (`Controls/MainWindow/AiChatWindow`) talks to a pluggable pr
 ## Pieces
 
 ```
-AiChatWindow ──► AiHandler (per window: chats, active chat)
+AiChatWindow ──► AiHandler (per window: chats, active chat; saved to <instance>/Data/AiChats/<id>.json)
   │                └► AiChat (transcript, usage, model + effort, permission mode, browser tools, system prompt)
   │                     └► AiConversation (abstract, DataObjects/Complex/Ai/)
   │                          ├► ClaudeConversation          — List<BetaMessageParam>
@@ -29,6 +29,21 @@ AiChatWindow ──► AiHandler (per window: chats, active chat)
   refusal, missing key) removes everything the turn appended, and `AiChat` drops the transcript entry. The panel
   shows the error and puts the message back in the input box. Claude's preserved-thinking check rejects
   edited history, so never edit or reorder earlier messages; only append or truncate a whole failed turn.
+- **Saved chats** (panel setting "Save chats", `BrowserSettings.AiSaveChats`; null = on except in private
+  instances). `AiHandler.LoadSaved` reads every chat file of the instance when the panel initializes;
+  `AiHandler.Save` writes one after each finished turn and after a model/effort/mode change (empty chats are not
+  saved; delete removes the file). A file is an `AiChatSave`: transcript, usage, model, effort, mode, and the
+  provider history (`AiConversation.ExportHistory/ImportHistory`; Claude messages via the SDK's `RawData` /
+  `FromRawUnchecked`). Image blocks (screenshots) are replaced by a text note on save so files stay small. Chat
+  ids are also file names, so loading a chat bumps the id counter past it. Each window keeps its own copies:
+  two windows continuing the same chat overwrite each other's file (last write wins).
+  History lists chats newest first.
+- **Stop.** While a reply runs, the send button is a stop button: it cancels the turn's token, which rolls the
+  turn back like any failure (tool actions already done stay done), declines a pending approval card and puts
+  the message back in the input box.
+- **Streaming is batched.** `MarkdownTextBlock` re-parses its whole text on each change, so streamed deltas
+  are buffered and applied every 100 ms (`StreamText`/`FlushStream`); flushed before approval cards and at the
+  end of a turn.
 - **Everything runs on the UI thread.** `AiChatWindow` awaits `AiChat.UserRequest` directly; the providers
   never `ConfigureAwait(false)`, so streaming callbacks and tool handlers can touch XAML and `TabManager`.
 

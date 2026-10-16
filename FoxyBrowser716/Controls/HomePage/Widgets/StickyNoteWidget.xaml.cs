@@ -6,7 +6,7 @@ namespace FoxyBrowser716.Controls.HomePage.Widgets;
 [WidgetInfo("Sticky Note Widget", MaterialIconKind.NoteTextOutline, WidgetCategory.Tools)]
 public partial class StickyNoteWidget : WidgetBase
 {
-	// (background, text) per color option; index 0 means "follow the browser theme"
+	//C (background, text) per color option; index 0 means "follow the browser theme"
 	private static readonly (Color background, Color text)[] Palette =
 	[
 		(default, default),
@@ -56,7 +56,7 @@ public partial class StickyNoteWidget : WidgetBase
 	{
 		if (_noteSetting.Value == NoteBox.Text) return;
 		_noteSetting.Value = NoteBox.Text;
-		// typing happens outside edit mode, so save on our own once the user pauses
+		//C typing happens outside edit mode, so save on our own once the user pauses
 		_saveDebounce.Stop();
 		_saveDebounce.Start();
 	}

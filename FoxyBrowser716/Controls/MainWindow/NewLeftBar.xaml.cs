@@ -40,7 +40,8 @@ public sealed partial class NewLeftBar : UserControl
     {
         TabManager = tabManager;
         TabManager.ActiveTabChanged += TabManagerOnActiveTabChanged;
-        
+        TabManager.Instance.Pins.CollectionChanged += (_, _) => RefreshPinIcons();
+        TabManager.Instance.Bookmarks.CollectionChanged += (_, _) => RefreshPinIcons();
         
         PinCard.Visibility = TabManager.ActiveTabId < 0 ? Visibility.Collapsed : Visibility.Visible;
         BookmarkCard.Visibility = TabManager.ActiveTabId < 0 ? Visibility.Collapsed : Visibility.Visible;
@@ -54,19 +55,20 @@ public sealed partial class NewLeftBar : UserControl
 
     private void InfoOnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(WebsiteInfo.Url) 
-            && sender is WebsiteInfo wi
-            && PinCard.Icon.Child is MaterialIcon pmi
-            && BookmarkCard.Icon.Child is MaterialIcon bmi)
-        {
-            pmi.Kind = TabManager!.Instance.Pins.Any(p => string.Equals(wi.Url, p.Url, StringComparison.CurrentCultureIgnoreCase)) 
-                ? MaterialIconKind.Pin 
-                : MaterialIconKind.PinOutline;
-            
-            bmi.Kind = TabManager.Instance.Bookmarks.Any(p => string.Equals(wi.Url, p.Url, StringComparison.CurrentCultureIgnoreCase)) 
-                ? MaterialIconKind.Bookmark
-                : MaterialIconKind.BookmarkOutline;
-        }
+        if (e.PropertyName == nameof(WebsiteInfo.Url))
+            RefreshPinIcons();
+    }
+
+    //C pins/bookmarks also change from the tab right-click menu, so the cards follow the lists
+    private void RefreshPinIcons()
+    {
+        if (TabManager is null
+            || !TabManager.TryGetTab(TabManager.ActiveTabId, out var tab)
+            || PinCard.Icon.Child is not MaterialIcon pmi
+            || BookmarkCard.Icon.Child is not MaterialIcon bmi)
+            return;
+        pmi.Kind = TabManager.Instance.IsPinned(tab!.Info.Url) ? MaterialIconKind.Pin : MaterialIconKind.PinOutline;
+        bmi.Kind = TabManager.Instance.IsBookmarked(tab.Info.Url) ? MaterialIconKind.Bookmark : MaterialIconKind.BookmarkOutline;
     }
 
     private void TabManagerOnActiveTabChanged((int oldId, int newId) args) 
@@ -87,17 +89,7 @@ public sealed partial class NewLeftBar : UserControl
         if (newId >= 0 && TabManager!.TryGetTab(newId, out var nwt))
         {
             nwt!.Info.PropertyChanged += InfoOnPropertyChanged;
-            if (PinCard.Icon.Child is MaterialIcon pmi
-                && BookmarkCard.Icon.Child is MaterialIcon bmi)
-            {
-                pmi.Kind = TabManager!.Instance.Pins.Any(p => string.Equals(nwt.Info.Url, p.Url, StringComparison.CurrentCultureIgnoreCase)) 
-                    ? MaterialIconKind.Pin 
-                    : MaterialIconKind.PinOutline;
-            
-                bmi.Kind = TabManager.Instance.Bookmarks.Any(p => string.Equals(nwt.Info.Url, p.Url, StringComparison.CurrentCultureIgnoreCase)) 
-                    ? MaterialIconKind.Bookmark
-                    : MaterialIconKind.BookmarkOutline;
-            }
+            RefreshPinIcons();
         }
     }
 
@@ -224,55 +216,13 @@ public sealed partial class NewLeftBar : UserControl
     private void PinCard_OnOnClick(int obj)
     {
         if (TabManager!.ActiveTabId >= 0 && TabManager.TryGetTab(TabManager.ActiveTabId, out var tab))
-        {
-            if (TabManager.Instance.Pins.FirstOrDefault(p => string.Equals(p.Url, tab!.Info.Url, StringComparison.CurrentCultureIgnoreCase)) is { } pinToRemove)
-            {
-                TabManager.Instance.Pins.Remove(pinToRemove);
-                
-                if (PinCard.Icon.Child is MaterialIcon mi) 
-                    mi.Kind = MaterialIconKind.PinOutline;
-            }
-            else
-            {
-                TabManager.Instance.Pins.Add(SnapshotOf(tab!.Info));
-                
-                if (PinCard.Icon.Child is MaterialIcon mi) 
-                    mi.Kind = MaterialIconKind.Pin;
-            }
-        }
+            TabManager.Instance.TogglePin(tab!.Info);
     }
-
-    /// <summary>
-    /// A copy of the tab's page info. Storing the tab's own <see cref="WebsiteInfo"/> would make the pin/bookmark
-    /// follow the tab as it navigates elsewhere.
-    /// </summary>
-    private static WebsiteInfo SnapshotOf(WebsiteInfo info) => new()
-    {
-        Url = info.Url,
-        Title = info.Title,
-        FavIconUrl = info.FavIconUrl,
-        DateAdded = DateTime.Now,
-    };
 
     private void BookmarkCard_OnOnClick(int obj)
     {
         if (TabManager!.ActiveTabId >= 0 && TabManager.TryGetTab(TabManager.ActiveTabId, out var tab))
-        {
-            if (TabManager.Instance.Bookmarks.FirstOrDefault(p => string.Equals(p.Url, tab!.Info.Url, StringComparison.CurrentCultureIgnoreCase)) is { } pinToRemove)
-            {
-                TabManager.Instance.Bookmarks.Remove(pinToRemove);
-                
-                if (BookmarkCard.Icon.Child is MaterialIcon mi) 
-                    mi.Kind = MaterialIconKind.BookmarkOutline;
-            }
-            else
-            {
-                TabManager.Instance.Bookmarks.Add(SnapshotOf(tab!.Info));
-                
-                if (BookmarkCard.Icon.Child is MaterialIcon mi) 
-                    mi.Kind = MaterialIconKind.Bookmark;
-            }
-        }
+            TabManager.Instance.ToggleBookmark(tab!.Info);
     }
 
     private bool _editMode = false;

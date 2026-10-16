@@ -64,7 +64,7 @@ public partial class BrowserStatsWidget : WidgetBase
 		_memoryQueryRunning = true;
 		try
 		{
-			// WebView2 objects are UI-thread bound, so collect the ids here and measure them off-thread
+			//C WebView2 objects are UI-thread bound, so collect the ids here and measure them off-thread
 			var ids = new HashSet<int> { Environment.ProcessId };
 			if (TabManager.WebsiteEnvironment is { } environment)
 				foreach (var info in environment.GetProcessInfos())

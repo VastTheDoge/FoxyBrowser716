@@ -27,7 +27,7 @@ public partial class BookmarksWidget : WidgetBase
 
 	protected override Task Initialize()
 	{
-		// the instance can swap its collections when it reloads, so re-resolve every time we come on screen
+		//C the instance can swap its collections when it reloads, so re-resolve every time we come on screen
 		Loaded += (_, _) => RebindSource();
 		Unloaded += (_, _) => SetSource(null);
 		ApplyTheme();
@@ -73,7 +73,7 @@ public partial class BookmarksWidget : WidgetBase
 			var content = new Grid { RowSpacing = 2 };
 			content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 			content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-			// the favicon is a fixed design size inside a Viewbox so it scales with the tile instead of being rebuilt
+			//C the favicon is a fixed design size inside a Viewbox so it scales with the tile instead of being rebuilt
 			content.Children.Add(new Viewbox
 			{
 				Stretch = Stretch.Uniform, Margin = new Thickness(4),
@@ -108,7 +108,6 @@ public partial class BookmarksWidget : WidgetBase
 
 		var columns = Math.Max(1, (int)(width / _tileSize));
 		var tileWidth = width / columns;
-		// square-ish tiles, a little taller when a title sits under the icon
 		var tileHeight = _showTitles ? tileWidth * 1.05 : tileWidth;
 		var rows = (_tiles.Count + columns - 1) / columns;
 

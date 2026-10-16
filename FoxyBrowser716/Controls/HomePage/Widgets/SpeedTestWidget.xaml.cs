@@ -8,8 +8,8 @@ using Material.Icons.WinUI3;
 
 namespace FoxyBrowser716.Controls.HomePage.Widgets;
 
-// Two halves: live throughput of this PC's internet-facing adapters (always on, no network traffic of its own),
-// and an on-demand ping/download/upload test against Cloudflare's public speed test endpoints.
+//C Two halves: live throughput of this PC's internet-facing adapters (always on, no network traffic of its own),
+//C and an on-demand ping/download/upload test against Cloudflare's public speed test endpoints.
 [WidgetInfo("Speed Test Widget", MaterialIconKind.WifiArrowUpDown, WidgetCategory.Tools)]
 public partial class SpeedTestWidget : WidgetBase
 {
@@ -21,14 +21,14 @@ public partial class SpeedTestWidget : WidgetBase
 	private const int Streams = 4;
 	private static readonly TimeSpan DownloadDuration = TimeSpan.FromSeconds(8);
 	private static readonly TimeSpan UploadDuration = TimeSpan.FromSeconds(6);
-	// stop early on fast links; this is already plenty for a stable reading and caps the data a test costs
+	//C stop early on fast links; this is already plenty for a stable reading and caps the data a test costs
 	private const long DownloadCap = 200_000_000;
 	private const long UploadCap = 50_000_000;
 
 	private static readonly HttpClient Http = CreateClient();
 	private static readonly Lazy<byte[]> UploadPayload = new(() =>
 	{
-		// random so nothing along the way can compress it
+		//C random so nothing along the way can compress it
 		var bytes = new byte[4_000_000];
 		Random.Shared.NextBytes(bytes);
 		return bytes;
@@ -62,8 +62,8 @@ public partial class SpeedTestWidget : WidgetBase
 
 	protected override Task Initialize()
 	{
-		// registered before the timer so a widget coming back on screen starts from a fresh baseline
-		// instead of averaging over the time it was hidden
+		//C registered before the timer so a widget coming back on screen starts from a fresh baseline
+		//C instead of averaging over the time it was hidden
 		Loaded += (_, _) => _lastCounters = [];
 		Unloaded += (_, _) => _testCts?.Cancel();
 		_sampleClock.Start();
@@ -99,7 +99,7 @@ public partial class SpeedTestWidget : WidgetBase
 				foreach (var (id, now) in counters)
 				{
 					if (!_lastCounters.TryGetValue(id, out var before)) continue;
-					// counters restart when an adapter reconnects; skip that sample instead of going negative
+					//C counters restart when an adapter reconnects; skip that sample instead of going negative
 					rx += Math.Max(0, now.rx - before.rx);
 					tx += Math.Max(0, now.tx - before.tx);
 				}
@@ -123,8 +123,8 @@ public partial class SpeedTestWidget : WidgetBase
 				continue;
 			try
 			{
-				// only adapters with a gateway lead to the internet; this skips Hyper-V/WSL virtual switches,
-				// which would otherwise count the same traffic twice
+				//C only adapters with a gateway lead to the internet; this skips Hyper-V/WSL virtual switches,
+				//C which would otherwise count the same traffic twice
 				if (nic.GetIPProperties().GatewayAddresses.Count == 0) continue;
 				var stats = nic.GetIPStatistics();
 				result[nic.Id] = (stats.BytesReceived, stats.BytesSent);
@@ -146,7 +146,7 @@ public partial class SpeedTestWidget : WidgetBase
 		LiveDownText.Text = FormatRate(_downHistory.Last());
 		LiveUpText.Text = FormatRate(_upHistory.Last());
 
-		// scale to the busiest moment on screen, but never below 1 Mbps so an idle connection reads as flat
+		//C scale to the busiest moment on screen, but never below 1 Mbps so an idle connection reads as flat
 		var max = Math.Max(125_000, Math.Max(_downHistory.Max(), _upHistory.Max()));
 		DownLine.Points = ToPoints(_downHistory, max);
 		UpLine.Points = ToPoints(_upHistory, max);
@@ -215,13 +215,14 @@ public partial class SpeedTestWidget : WidgetBase
 			using var response = await Http.GetAsync(DownloadUrl + "0", HttpCompletionOption.ResponseHeadersRead, token);
 			clock.Stop();
 			response.EnsureSuccessStatusCode();
-			// the first request also pays for DNS + TCP + TLS setup, which isn't latency
+			//C the first request also pays for DNS + TCP + TLS setup, which isn't latency
 			if (i > 0) samples.Add(clock.Elapsed.TotalMilliseconds);
 		}
 		samples.Sort();
 		return samples[samples.Count / 2];
 	}
 
+	// Claude Doc
 	/// <summary>Runs <see cref="Streams"/> parallel transfers for a fixed time and returns bytes/second.</summary>
 	private static async Task<double> MeasureThroughput(bool download, CancellationToken token, Action<double> onProgress)
 	{
@@ -266,7 +267,7 @@ public partial class SpeedTestWidget : WidgetBase
 		foreach (var faulted in workers.Where(x => x.IsFaulted)) _ = faulted.Exception; // observe every failure
 		if (total == 0 && failed?.Exception?.InnerException is { } error) throw error;
 
-		// ignore the first ~30%: TCP slow-start makes the ramp-up unrepresentative of the line's speed
+		//C ignore the first ~30%: TCP slow-start makes the ramp-up unrepresentative of the line's speed
 		var elapsed = clock.Elapsed.TotalSeconds;
 		var start = samples.FirstOrDefault(s => s.seconds >= elapsed * 0.3);
 		return start.seconds > 0 && elapsed - start.seconds >= 0.5
@@ -291,6 +292,7 @@ public partial class SpeedTestWidget : WidgetBase
 		response.EnsureSuccessStatusCode();
 	}
 
+	// Claude Doc
 	/// <summary>Request body that reports bytes as they're written, so upload speed can be sampled mid-request.</summary>
 	private sealed class CountingContent(byte[] payload, Action<int> onBytes) : HttpContent
 	{
@@ -345,7 +347,7 @@ public partial class SpeedTestWidget : WidgetBase
 		return $"{FormatNumber(value)} {units[unit]}";
 	}
 
-	// three significant digits keeps every reading about the same width: 1.23 / 12.3 / 123
+	//C three significant digits keeps every reading about the same width: 1.23 / 12.3 / 123
 	private static string FormatNumber(double value) =>
 		value >= 99.95 ? value.ToString("F0") : value >= 9.995 ? value.ToString("F1") : value.ToString("F2");
 

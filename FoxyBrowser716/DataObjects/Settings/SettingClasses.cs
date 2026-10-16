@@ -25,12 +25,14 @@ public class DecimalSetting(string name, string description, decimal defaultValu
     public decimal? MinValue { get; } = minValue;
     public decimal? MaxValue { get; } = maxValue;
 }
+// Claude Doc
 /// <param name="resetValue">When set, a "Reset to default" button puts this text back.</param>
 public class StringSetting(string name, string description, string defaultValue, Action<string> onValueChanged, bool multiline = false, string? resetValue = null) : Setting<string>(name, description, defaultValue, onValueChanged)
 {
     public bool Multiline { get; } = multiline;
     public string? ResetValue { get; } = resetValue;
 }
+// Claude Doc
 /// <summary>A password box; the value is never shown. Used for API keys.</summary>
 /// <param name="test">Optional check behind a Test button (e.g. calling the API with the key); returns a short status.</param>
 public class SecretSetting(string name, string description, string defaultValue, Action<string> onValueChanged, Func<Task<string>>? test = null) : Setting<string>(name, description, defaultValue, onValueChanged)

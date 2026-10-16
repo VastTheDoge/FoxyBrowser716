@@ -55,13 +55,14 @@ public partial class WorldClockWidget : WidgetBase
 		}
 	}
 
+	// Claude Doc
 	/// <summary>"America/New_York" → "New York"; Windows ids ("Tokyo Standard Time") are used as-is.</summary>
 	private static string DefaultLabel(string zoneId) => zoneId[(zoneId.LastIndexOf('/') + 1)..].Replace('_', ' ');
 
 	private static TimeZoneInfo? FindZone(string id)
 	{
 		if (id.Length == 0) return null;
-		// .NET resolves IANA ids on Windows too (through ICU), alongside the Windows registry ids
+		//C .NET resolves IANA ids on Windows too (through ICU), alongside the Windows registry ids
 		try { return TimeZoneInfo.TryFindSystemTimeZoneById(id, out var zone) ? zone : null; }
 		catch { return null; }
 	}
@@ -116,7 +117,6 @@ public partial class WorldClockWidget : WidgetBase
 			var root = new Border
 			{
 				Height = RowHeight, Child = grid,
-				// hairline between rows, none under the last one
 				BorderThickness = new Thickness(0, 0, 0, i < entries.Count - 1 ? 1 : 0),
 			};
 
@@ -130,13 +130,14 @@ public partial class WorldClockWidget : WidgetBase
 		Tick();
 	}
 
+	// Claude Doc
 	/// <summary>Width of the longest time the current culture prints, so the clock column never changes size while ticking.</summary>
 	private double MeasureWidestTime()
 	{
 		var format = _showSeconds ? "T" : "t";
 		var probe = new TextBlock { FontSize = TimeFontSize, FontFamily = _clockFont };
 		double widest = 0, longest = 0;
-		// two-digit hours in both halves of the day cover the longest text any 12h or 24h pattern produces
+		//C two-digit hours in both halves of the day cover the longest text any 12h or 24h pattern produces
 		foreach (var hour in new[] { 10, 12, 22, 23 })
 		{
 			probe.Text = new DateTime(2000, 1, 1, hour, 58, 58).ToString(format, CultureInfo.CurrentCulture);
@@ -144,7 +145,7 @@ public partial class WorldClockWidget : WidgetBase
 			widest = Math.Max(widest, probe.DesiredSize.Width);
 			longest = Math.Max(longest, probe.Text.Length);
 		}
-		// if measuring off-screen ever comes back empty, fall back to Consolas' fixed ~0.55em advance
+		//C if measuring off-screen ever comes back empty, fall back to Consolas' fixed ~0.55em advance
 		if (widest <= 0) widest = longest * TimeFontSize * 0.55;
 		return Math.Ceiling(widest);
 	}

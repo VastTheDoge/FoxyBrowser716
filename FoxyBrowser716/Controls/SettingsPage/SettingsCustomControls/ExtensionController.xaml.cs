@@ -15,6 +15,7 @@ using WinUIEx;
 
 namespace FoxyBrowser716.Controls.SettingsPage.SettingsCustomControls;
 
+// Claude Doc
 /// <summary>
 /// Settings section listing this instance's extensions with on/off, options, update and remove, plus
 /// store links, loading an unpacked extension and checking everything for updates.
@@ -42,7 +43,7 @@ public sealed partial class ExtensionsController : ThemedUserControl
 
         _mainWindow = mainWindow;
 
-        // only listen while shown, so closed windows do not stay referenced by the static event
+        //C only listen while shown, so closed windows do not stay referenced by the static event
         Loaded += (_, _) =>
         {
             ExtensionManager.ExtensionsModified += OnExtensionsModified;
@@ -239,7 +240,6 @@ public sealed partial class ExtensionsController : ThemedUserControl
         _statusText.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    /// <summary>Runs an extension operation with the buttons locked and errors reported as a toast.</summary>
     private async Task RunBusy(string status, Func<WebView2, Task> work)
     {
         if (_mainWindow is null || _busy) return;

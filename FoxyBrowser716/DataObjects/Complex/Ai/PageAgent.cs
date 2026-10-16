@@ -4,6 +4,7 @@ using Microsoft.Web.WebView2.Core;
 
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
+// Claude Doc
 /// <summary>
 /// Reads and drives a web page for the assistant. A script installed into the page renders it as text with
 /// interactive elements marked inline (<c>[e12 button "Add to cart"]</c>) and keeps a ref → element map, so
@@ -12,11 +13,12 @@ namespace FoxyBrowser716.DataObjects.Complex.Ai;
 /// </summary>
 internal static class PageAgent
 {
+	// Claude Doc
 	/// <summary>Bump when the script changes: pages that already have an older copy reinstall it.</summary>
-	private const int Version = 2;
+	private const int Version = 3;
 
-	// Runs in the page's main world. Refs are stable for an element's lifetime (WeakMap), so re-reading a page
-	// keeps the same ids; a navigation starts a fresh map. Nothing here sends data anywhere.
+	//C Runs in the page's main world. Refs are stable for an element's lifetime (WeakMap), so re-reading a page
+	//C keeps the same ids; a navigation starts a fresh map. Nothing here sends data anywhere.
 	private const string Script = """
 		if (window.__foxyAgent?.v !== VERSION) Object.defineProperty(window, '__foxyAgent', { configurable: true, value: (() => {
 		  const refs = new Map(), ids = new WeakMap();
@@ -128,7 +130,7 @@ internal static class PageAgent
 		      const role = shown ? roleOf(el) : null;
 		      const block = !/^(inline|contents|table-cell)/.test(s.display);
 		      if (role) { out.push(block ? '\n' : ' ', control(el, role), block ? '\n' : ' '); return; }
-		      // no text but a tooltip or label (status bars, icon-only badges): what a sighted user would see on hover
+		      //C no text but a tooltip or label (status bars, icon-only badges): what a sighted user would see on hover
 		      if (shown && n !== 'td' && n !== 'th' && (el.hasAttribute('title') || el.hasAttribute('aria-label')) && !clean(el.textContent) && !el.querySelector('img[alt]:not([alt=""])')) {
 		        const label = clean(el.getAttribute('aria-label')) || clean(el.getAttribute('title'));
 		        const r = el.getBoundingClientRect();
@@ -137,7 +139,7 @@ internal static class PageAgent
 		      }
 		      if (n === 'table') {
 		        out.push('\n'); children(el);
-		        // collapsed tables (Wikipedia's [show]) and filtered lists keep their rows in the DOM, hidden
+		        //C collapsed tables (Wikipedia's [show]) and filtered lists keep their rows in the DOM, hidden
 		        const rows = el.rows.length < 5000 ? [...el.rows] : [];
 		        const hidden = rows.filter(r => css(r).display === 'none').length;
 		        if (hidden) out.push(`\n(${hidden} more row${hidden > 1 ? 's' : ''} hidden: the table is collapsed or filtered; look for a show/expand control)\n`);
@@ -145,7 +147,7 @@ internal static class PageAgent
 		      }
 		      const h = /^h([1-6])$/.exec(n);
 		      if (h || n === 'li' || n === 'tr') {
-		        // rendered on their own, so empty ones (closed menus) disappear and rows/headings stay on one line
+		        //C rendered on their own, so empty ones (closed menus) disappear and rows/headings stay on one line
 		        const mark = out.length;
 		        children(el);
 		        let inner = out.splice(mark).join('').trim();
@@ -155,15 +157,15 @@ internal static class PageAgent
 		        return;
 		      }
 		      if (n === 'td' || n === 'th') { children(el); out.push(' | '); return; }
-		      // something the page made clickable without saying so (cursor: pointer set here, not inherited)
+		      //C something the page made clickable without saying so (cursor: pointer set here, not inherited)
 		      if (shown && s.cursor === 'pointer' && !(el.parentElement && css(el.parentElement).cursor === 'pointer')) out.push(` [${refOf(el)} clickable] `);
 		      const pad = block ? '\n' : s.display.startsWith('inline-') ? ' ' : '';
 		      out.push(pad); children(el); out.push(pad);
 		    }
 		    walk(root);
 
-		    // one element per line, no blank lines except before headings: blank lines cost tokens and say nothing.
-		    // Runs of the same line (repeated items, separators) become one line with a count.
+		    //C one element per line, no blank lines except before headings: blank lines cost tokens and say nothing.
+		    //C Runs of the same line (repeated items, separators) become one line with a count.
 		    const lines = [];
 		    let fence = false, prev = null, repeat = 0;
 		    const flush = () => { if (repeat > 1) lines[lines.length - 1] += ` (\u00d7${repeat})`; repeat = 0; };
@@ -182,7 +184,7 @@ internal static class PageAgent
 		    return lines.join('\n').slice(0, 600000);
 		  }
 
-		  // later parts of a long read reuse the render, unless something was done to the page since
+		  //C later parts of a long read reuse the render, unless something was done to the page since
 		  let cache = null;
 		  const page = fresh => {
 		    if (!fresh && cache && cache.url === location.href && performance.now() - cache.at < 20000) return cache.text;
@@ -191,16 +193,37 @@ internal static class PageAgent
 		    return text;
 		  };
 		  const changed = () => { cache = null; };
-		  const scrolled = () => {
-		    const max = Math.max(0, document.documentElement.scrollHeight - innerHeight);
-		    return { scrollY: Math.round(scrollY), percent: max ? Math.min(100, Math.round(scrollY / max * 100)) : 100 };
+		  //C pages like mail clients and chat apps scroll an inner element and leave the window still;
+		  //C use the scrollable element under the middle of the screen, else the biggest one
+		  const canScroll = el => {
+		    if (el.scrollHeight <= el.clientHeight + 1) return false;
+		    const o = getComputedStyle(el).overflowY;
+		    return o === 'auto' || o === 'scroll' || o === 'overlay';
+		  };
+		  const scroller = () => {
+		    const root = document.scrollingElement || document.documentElement;
+		    if (root.scrollHeight > innerHeight + 1) return null;
+		    for (let el = document.elementFromPoint(innerWidth / 2, innerHeight / 2); el && el !== document.body; el = el.parentElement)
+		      if (canScroll(el)) return el;
+		    let best = null, area = 0;
+		    for (const el of document.querySelectorAll('body *')) {
+		      if (!canScroll(el)) continue;
+		      const r = el.getBoundingClientRect(), a = Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0)) * Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
+		      if (a > area) { best = el; area = a; }
+		    }
+		    return best;
+		  };
+		  const scrolled = (el = scroller()) => {
+		    const y = el ? el.scrollTop : scrollY;
+		    const max = el ? el.scrollHeight - el.clientHeight : Math.max(0, document.documentElement.scrollHeight - innerHeight);
+		    return { scrollY: Math.round(y), percent: max > 0 ? Math.min(100, Math.round(y / max * 100)) : 100 };
 		  };
 		  const gone = { error: 'stale' };
 
 		  return {
 		    v: VERSION,
 		    read(start, max) {
-		      // mid-navigation the new document can be empty for a moment
+		      //C mid-navigation the new document can be empty for a moment
 		      if (!document.documentElement) return { title: '', url: location.href, total: 0, start: 0, end: 0, text: '', loading: true, empty: true };
 		      const text = page(!start);
 		      start = Math.max(0, Math.min(start | 0, text.length));
@@ -215,7 +238,6 @@ internal static class PageAgent
 		      for (const line of text.split('\n')) {
 		        const at = line.toLowerCase().indexOf(needle);
 		        if (at >= 0 && count++ < 40) {
-		          // long paragraphs: show the part around the match
 		          const from = line.length > 400 ? Math.max(0, Math.min(at - 150, line.length - 400)) : 0;
 		          matches.push({ offset, line: (from > 0 ? '…' : '') + line.slice(from, from + 400) + (from + 400 < line.length ? '…' : '') });
 		        }
@@ -224,7 +246,7 @@ internal static class PageAgent
 		      return { title: document.title, url: location.href, total: text.length, count, matches };
 		    },
 		    describe(ref) { const el = byRef(ref); return el ? { desc: describe(el) } : gone; },
-		    // scrolls the element into view and returns its center in top-level viewport CSS pixels
+		    //C scrolls the element into view and returns its center in top-level viewport CSS pixels
 		    target(ref) {
 		      const el = byRef(ref); if (!el) return gone;
 		      changed();
@@ -264,7 +286,7 @@ internal static class PageAgent
 		      const want = String(option).toLowerCase(), opts = [...el.options];
 		      const o = opts.find(o => clean(o.text).toLowerCase() === want || o.value === option) || opts.find(o => clean(o.text).toLowerCase().includes(want));
 		      if (!o) return { error: 'no such option', options: opts.map(o => clean(o.text)) };
-		      // the prototype setter, so frameworks that wrap .value (React) see the change
+		      //C the prototype setter, so frameworks that wrap .value (React) see the change
 		      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, o.value);
 		      el.dispatchEvent(new Event('input', { bubbles: true }));
 		      el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -273,10 +295,11 @@ internal static class PageAgent
 		    scroll(ref, direction) {
 		      changed();
 		      if (ref) { const el = byRef(ref); if (!el) return gone; el.scrollIntoView({ block: 'center', behavior: 'instant' }); return scrolled(); }
-		      const h = innerHeight * 0.85, root = document.documentElement;
-		      ({ up: () => scrollBy({ top: -h, behavior: 'instant' }), down: () => scrollBy({ top: h, behavior: 'instant' }),
-		         top: () => scrollTo({ top: 0, behavior: 'instant' }), bottom: () => scrollTo({ top: root.scrollHeight, behavior: 'instant' }) })[direction]?.();
-		      return scrolled();
+		      const el = scroller(), target = el || window;
+		      const h = (el ? el.clientHeight : innerHeight) * 0.85, height = (el || document.documentElement).scrollHeight;
+		      ({ up: () => target.scrollBy({ top: -h, behavior: 'instant' }), down: () => target.scrollBy({ top: h, behavior: 'instant' }),
+		         top: () => target.scrollTo({ top: 0, behavior: 'instant' }), bottom: () => target.scrollTo({ top: height, behavior: 'instant' }) })[direction]?.();
+		      return scrolled(el);
 		    },
 		  };
 		})() });
@@ -302,6 +325,7 @@ internal static class PageAgent
 		return JsonDocument.Parse(result.ResultAsJson).RootElement.Clone();
 	}
 
+	// Claude Doc
 	/// <summary>Waits (up to <paramref name="timeout"/>) for the page to finish loading, so a read right after a navigation sees the new page.</summary>
 	public static async Task WaitForLoad(CoreWebView2 core, TimeSpan timeout)
 	{
@@ -314,12 +338,13 @@ internal static class PageAgent
 			}
 			catch (Exception)
 			{
-				// mid-navigation; try again
+				//C mid-navigation; try again
 			}
 			await Task.Delay(250);
 		}
 	}
 
+	// Claude Doc
 	/// <summary>
 	/// Runs <paramref name="action"/> (a click, a key, a navigation) and, if it starts a navigation, waits for the new
 	/// page to finish loading, up to <paramref name="timeout"/>. Returns whether a navigation happened.
@@ -336,7 +361,7 @@ internal static class PageAgent
 		try
 		{
 			await action();
-			// lets the page react (navigation start, menus opening) before reporting where things stand
+			//C lets the page react (navigation start, menus opening) before reporting where things stand
 			await Task.Delay(400);
 			if (started) await Task.WhenAny(completed.Task, Task.Delay(timeout));
 			return started;
@@ -348,9 +373,11 @@ internal static class PageAgent
 		}
 	}
 
+	// Claude Doc
 	/// <summary>Longest side of a screenshot sent to the model; bigger costs more tokens and doesn't read better.</summary>
 	private const int ScreenshotMaxWidth = 1280;
 
+	// Claude Doc
 	/// <summary>
 	/// A JPEG of what the tab shows right now (the visible part of the page, scaled to at most
 	/// <see cref="ScreenshotMaxWidth"/> pixels wide). A tab that isn't on screen may not paint, so this can time out.
@@ -387,6 +414,7 @@ internal static class PageAgent
 	private static Task Cdp(CoreWebView2 core, string method, object parameters) =>
 		core.CallDevToolsProtocolMethodAsync(method, JsonSerializer.Serialize(parameters)).AsTask();
 
+	// Claude Doc
 	/// <summary>A real left click at viewport CSS pixel coordinates.</summary>
 	public static async Task Click(CoreWebView2 core, double x, double y)
 	{
@@ -395,6 +423,7 @@ internal static class PageAgent
 		await Cdp(core, "Input.dispatchMouseEvent", new { type = "mouseReleased", x, y, button = "left", buttons = 0, clickCount = 1 });
 	}
 
+	// Claude Doc
 	/// <summary>Types into the focused element, replacing its selection, as if pasted by the user.</summary>
 	public static Task InsertText(CoreWebView2 core, string text) => Cdp(core, "Input.insertText", new { text });
 
@@ -418,7 +447,6 @@ internal static class PageAgent
 
 	public static IEnumerable<string> KeyNames => Keys.Keys;
 
-	/// <summary>Presses and releases a named key (see <see cref="KeyNames"/>) on whatever has focus.</summary>
 	public static async Task PressKey(CoreWebView2 core, string name)
 	{
 		if (!Keys.TryGetValue(name.Trim(), out var k))
@@ -431,6 +459,7 @@ internal static class PageAgent
 		await Cdp(core, "Input.dispatchKeyEvent", new { type = "keyUp", key = k.Key, code = k.Code, windowsVirtualKeyCode = k.VirtualKey });
 	}
 
+	// Claude Doc
 	/// <summary>
 	/// Evaluates JavaScript in the page and returns the result as JSON. Promises are awaited, so <c>async</c>
 	/// code works. Gives up waiting after <paramref name="timeout"/> (the script itself keeps running).

@@ -1,5 +1,6 @@
 namespace FoxyBrowser716.DataObjects.Basic;
 
+// Claude Doc
 /// <summary>
 /// One visited URL. History keeps a single entry per URL (updated on every visit) rather than one per visit,
 /// which keeps History.json small and makes search ranking by visit count cheap.

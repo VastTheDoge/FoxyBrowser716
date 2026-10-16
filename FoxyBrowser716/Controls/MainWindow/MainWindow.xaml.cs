@@ -37,6 +37,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
     public Instance Instance { get; private set; }
 
     private static int _windowCounter;
+    // Claude Doc
     /// <summary>Unique for this run across every instance, like tab ids; the assistant's window_id.</summary>
     public int WindowNumber { get; } = System.Threading.Interlocked.Increment(ref _windowCounter);
 
@@ -50,7 +51,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
 
         try
         {
-            // the exe's folder, which is also the install folder when packaged (Package.Current throws unpackaged)
+            //C the exe's folder, which is also the install folder when packaged (Package.Current throws unpackaged)
             AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Foxybrowser716.ico"));
 
         }
@@ -122,12 +123,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
         
         await ExtensionPopupWebview.EnsureCoreWebView2Async(TabManager.WebsiteEnvironment);
         await Instance.SetupExtensionSupport(ExtensionPopupWebview); // loads up those extensions!
-        ExtensionPopupWebview.CoreWebView2.NewWindowRequested +=
-            (_, args2) =>
-            {
-                TabManager.SwapActiveTabTo(TabManager.AddTab(args2.Uri));
-                args2.Handled = true;
-            };
+        ExtensionPopupWebview.CoreWebView2.NewWindowRequested += (_, args2) => TabManager.OpenNewWindowAsTab(args2, null);
         
         ExtensionPopupWebview.CoreWebView2.WebMessageReceived += (_, args) =>
         {
@@ -143,6 +139,9 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
 
         // refresh all data
         HandleCacheChanged();
+
+        if (FoxyFileManager.TakeDataFolderWarning() is { } warning)
+            ShowToast("Data folder", warning, MaterialIconKind.FolderAlert, isError: true);
     }
 
     private void HomePageOnToggleEditMode(bool inEdit)
@@ -159,7 +158,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
 
     private async void TabManagerOnTabAdded(WebviewTab tab)
     {
-        // only SwapActiveTabTo updates tab visibility, so a tab added without becoming active (backup restore onto home) would cover the page
+        //C only SwapActiveTabTo updates tab visibility, so a tab added without becoming active (backup restore onto home) would cover the page
         tab.Core.Visibility = tab.Id == TabManager.ActiveTabId ? Visibility.Visible : Visibility.Collapsed;
         TabHolder.Children.Add(tab.Core);
 
@@ -183,13 +182,15 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
         };
     }
 
-    // Chrome's limits for extension popups
+    //C Chrome's limits for extension popups
     private const double PopupMinSize = 25, PopupMaxWidth = 800, PopupMaxHeight = 600;
 
+    // Claude Doc
     /// <summary>Set when an extension popup was clicked; it opens once its page has loaded and been measured.</summary>
     private bool _extensionPopupPending;
     private readonly DispatcherTimer _popupSizePoll = new() { Interval = TimeSpan.FromMilliseconds(250) };
 
+    // Claude Doc
     /// <summary>
     /// Measures the popup page the way Chrome's popup autosize does: its min-content width and the height that gives.
     /// Reading <c>documentElement.scrollWidth/Height</c> doesn't work, since those never report less than the current
@@ -214,7 +215,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
               de.style.setProperty('width', 'min-content', 'important');
               de.style.setProperty('height', 'auto', 'important');
               const rect = de.getBoundingClientRect(), cs = getComputedStyle(body);
-              // a body that scrolls on its own keeps its overflow inside; otherwise the overflow grows the popup
+              //C a body that scrolls on its own keeps its overflow inside; otherwise the overflow grows the popup
               const clips = getComputedStyle(de).overflowY !== 'visible' && cs.overflowY !== 'visible';
               const width = clips ? rect.width : Math.max(rect.width, body.scrollWidth + parseFloat(cs.marginLeft) + parseFloat(cs.marginRight));
               const height = clips ? rect.height : Math.max(rect.height, body.scrollHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom));
@@ -243,7 +244,6 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
 
     private record PopupSize(string? type, double width, double height, double scrollbar, bool live);
 
-    /// <summary>Sizes the extension popup to its page, then opens it if a click is waiting on that.</summary>
     private async Task MeasureExtensionPopup()
     {
         PopupSize? size = null;
@@ -259,7 +259,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
             ExtensionPopupRoot.IsOpen = true;
         }
 
-        // without the WebView2 bridge the page can't report its own size changes, so poll it while it is open
+        //C without the WebView2 bridge the page can't report its own size changes, so poll it while it is open
         if (size is { live: false } && ExtensionPopupRoot.IsOpen) _popupSizePoll.Start();
         else _popupSizePoll.Stop();
     }
@@ -272,7 +272,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
         var margin = ExtensionPopupRoot.Margin;
         var maxWidth = Math.Max(PopupMinSize, Math.Min(PopupMaxWidth, BorderGrid.ActualWidth - margin.Left - 8));
         var maxHeight = Math.Max(PopupMinSize, Math.Min(PopupMaxHeight, BorderGrid.ActualHeight - margin.Top - 8));
-        // content past a limit scrolls, and that scrollbar takes room from the other direction
+        //C content past a limit scrolls, and that scrollbar takes room from the other direction
         var width = size.width + (size.height > maxHeight ? size.scrollbar : 0);
         var height = size.height + (size.width > maxWidth ? size.scrollbar : 0);
         ExtensionPopupWebview.Width = Math.Clamp(width, PopupMinSize, maxWidth);
@@ -470,6 +470,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
         }
     }
 
+    // Claude Doc
     /// <summary>
     /// Moves and resizes the window to <paramref name="bounds"/>, in physical screen pixels (the same units
     /// <see cref="GetBounds"/> returns), fitted inside the work area of the nearest monitor.
@@ -478,18 +479,18 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
     {
         var rect = new Windows.Graphics.RectInt32((int)bounds.X, (int)bounds.Y, (int)bounds.Width, (int)bounds.Height);
 
-        // saved bounds can be from a monitor that is no longer attached, or larger than this one
+        //C saved bounds can be from a monitor that is no longer attached, or larger than this one
         var work = DisplayArea.GetFromRect(rect, DisplayAreaFallback.Nearest).WorkArea;
         rect.Width = Math.Min(rect.Width, work.Width);
         rect.Height = Math.Min(rect.Height, work.Height);
         rect.X = Math.Clamp(rect.X, work.X, work.X + work.Width - rect.Width);
         rect.Y = Math.Clamp(rect.Y, work.Y, work.Y + work.Height - rect.Height);
 
-        // moving onto a monitor with a different DPI rescales the window, the second call lands the exact size
+        //C moving onto a monitor with a different DPI rescales the window, the second call lands the exact size
         AppWindow.MoveAndResize(rect);
         AppWindow.MoveAndResize(rect);
 
-        // a window restored maximized is never Normal for GetBounds to record its restore bounds
+        //C a window restored maximized is never Normal for GetBounds to record its restore bounds
         _prevBounds = new Rect(rect.X, rect.Y, rect.Width, rect.Height);
     }
 
@@ -559,7 +560,8 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
             case >= 0:
                 ContextMenuPopup.SetItems(items
                     .Prepend(new(new MaterialIcon { Kind = MaterialIconKind.Cogs }, 1, "Settings",
-                        () => TabManager.SwapActiveTabTo(-2))));
+                        () => TabManager.SwapActiveTabTo(-2)))
+                    .Concat(PageMenuItems()));
                 break;
             case -1:
                 ContextMenuPopup.SetItems(items
@@ -569,6 +571,63 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
             case -2:
                 ContextMenuPopup.SetItems(items);
                 break;
+        }
+    }
+
+    private IEnumerable<FContextMenu.MenuItem> PageMenuItems()
+    {
+        if (!TabManager.TryGetTab(TabManager.ActiveTabId, out var tab) || tab!.Core.CoreWebView2 is not { } core)
+            return [];
+
+        return
+        [
+            new(new MaterialIcon { Kind = MaterialIconKind.FindReplace }, 1, "Find in page", async () =>
+            {
+                try
+                {
+                    var options = core.Environment.CreateFindOptions();
+                    options.FindTerm = "";
+                    options.ShouldHighlightAllMatches = true;
+                    await core.Find.StartAsync(options);
+                }
+                catch (Exception e) { FoxyLogger.AddError(e); }
+            }),
+            new(new MaterialIcon { Kind = MaterialIconKind.Printer }, 1, "Print", () => core.ShowPrintUI(CoreWebView2PrintDialogKind.Browser)),
+            new(new MaterialIcon { Kind = MaterialIconKind.ContentSave }, 1, "Save page as", async () =>
+            {
+                try { await core.ShowSaveAsUIAsync(); }
+                catch (Exception e) { FoxyLogger.AddError(e); }
+            }),
+            new(new MaterialIcon { Kind = MaterialIconKind.ShareVariant }, 1, "Share", () => SharePage(core.Source, core.DocumentTitle)),
+        ];
+    }
+
+    private (string url, string title)? _pageToShare;
+    private bool _shareHooked;
+
+    private void SharePage(string url, string title)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out _)) return;
+        try
+        {
+            var hwnd = this.GetWindowHandle();
+            if (!_shareHooked)
+            {
+                global::Windows.ApplicationModel.DataTransfer.DataTransferManagerInterop.GetForWindow(hwnd).DataRequested += (_, args) =>
+                {
+                    if (_pageToShare is not { } page) return;
+                    args.Request.Data.Properties.Title = string.IsNullOrWhiteSpace(page.title) ? page.url : page.title;
+                    args.Request.Data.SetWebLink(new Uri(page.url));
+                };
+                _shareHooked = true;
+            }
+            _pageToShare = (url, title);
+            global::Windows.ApplicationModel.DataTransfer.DataTransferManagerInterop.ShowShareUIForWindow(hwnd);
+        }
+        catch (Exception e)
+        {
+            FoxyLogger.AddError(e);
+            ShowToast("Share", "Windows couldn't open the share window.", MaterialIconKind.ShareVariant);
         }
     }
 
@@ -637,7 +696,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
 
     private void ExtensionsClick()
     {
-        // disabled extensions have no running popup, so they are left out of the quick menu
+        //C disabled extensions have no running popup, so they are left out of the quick menu
         var items = Instance
             .GetSavedExtensions()
             .Where(e => e.IsEnabled)
@@ -654,7 +713,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
                             ShowToast(ExtensionManager.GetDisplayName(e), "This extension has no popup. Its options are in Settings > Extensions.", MaterialIconKind.Puzzle);
                             return;
                         }
-                        // opened by MeasureExtensionPopup once loaded, so it appears at its own size
+                        //C opened by MeasureExtensionPopup once loaded, so it appears at its own size
                         _extensionPopupPending = true;
                         ExtensionPopupWebview.CoreWebView2.Navigate($"chrome-extension://{e.Id}/{popup}");
                     });
@@ -672,7 +731,6 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
         ContextMenuPopup.SetItems(items);
     }
 
-    /// <summary>Shows the settings page scrolled to <paramref name="category"/>.</summary>
     public void OpenSettings(SettingsCategory category)
     {
         TabManager.SwapActiveTabTo(-2);
@@ -811,7 +869,7 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
             return;
         }
 
-        // local results first so they show instantly; network suggestions fill in afterwards
+        //C local results first so they show instantly; network suggestions fill in afterwards
         FillSuggestionSection(OpenTabsLabel, OpenTabSuggestions,
             TabManager.Groups.SelectMany(g => g.Tabs)
                 .Concat(TabManager.Tabs)
@@ -861,11 +919,11 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
         }
         catch (Exception e)
         {
-            // offline or rate limited: the local results are still useful, so this is not an error
+            //C offline or rate limited: the local results are still useful, so this is not an error
             Debug.WriteLine(e);
         }
 
-        // the user kept typing (or cleared the box) while this request was in flight
+        //C the user kept typing (or cleared the box) while this request was in flight
         if (request != _suggestionRequest) return;
 
         FillSuggestionSection(SearchCompletionsLabel, SearchCompletions,

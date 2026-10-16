@@ -4,7 +4,6 @@ using Material.Icons.WinUI3;
 
 namespace FoxyBrowser716.Controls.WebUi;
 
-/// <summary>Values the user entered when a prompt button was clicked.</summary>
 public sealed class WebPromptResult
 {
 	public string Text { get; init; } = string.Empty;
@@ -15,6 +14,7 @@ public sealed class WebPromptResult
 
 public sealed record WebPromptButton(string Label, bool IsPrimary, Action<WebPromptResult> Clicked, bool IsDanger = false);
 
+// Claude Doc
 /// <summary>
 /// Describes one site prompt (permission request, alert/confirm/prompt, sign-in). <see cref="WebPromptHost"/>
 /// queues these per tab and shows them with <see cref="WebPromptCard"/>.
@@ -28,20 +28,20 @@ public sealed class WebPromptSpec
 	public bool HasTextInput { get; init; }
 	public string? DefaultText { get; init; }
 
-	/// <summary>Show user name + password fields (basic authentication).</summary>
 	public bool HasCredentials { get; init; }
 
+	// Claude Doc
 	/// <summary>Label for an optional check box (e.g. "Remember this decision"); null hides it.</summary>
 	public string? CheckboxText { get; init; }
 	public bool CheckboxDefault { get; init; }
 
 	public required IReadOnlyList<WebPromptButton> Buttons { get; init; }
 
+	// Claude Doc
 	/// <summary>Runs when the prompt goes away without a button click (tab or window closed). Must complete any deferral.</summary>
 	public required Action Cancelled { get; init; }
 }
 
-/// <summary>The themed card for a <see cref="WebPromptSpec"/>.</summary>
 public sealed partial class WebPromptCard : ThemedUserControl
 {
 	private readonly WebPromptSpec _spec;
@@ -55,6 +55,7 @@ public sealed partial class WebPromptCard : ThemedUserControl
 	private readonly FCheckBox? _checkBox;
 	private readonly List<(FTextButton button, WebPromptButton spec)> _buttons = [];
 
+	// Claude Doc
 	/// <summary>Raised once, when a button is clicked. The host removes the card, then runs the button action.</summary>
 	public event Action<WebPromptButton, WebPromptResult>? ButtonClicked;
 
@@ -142,7 +143,6 @@ public sealed partial class WebPromptCard : ThemedUserControl
 
 		Loaded += (_, _) =>
 		{
-			// put the cursor where the user is expected to type
 			if (_textInput is not null) _textInput.FocusInput();
 			else _userInput?.FocusInput();
 		};

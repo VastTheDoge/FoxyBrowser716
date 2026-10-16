@@ -4,6 +4,7 @@ using Microsoft.Web.WebView2.Core;
 
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
+// Claude Doc
 /// <summary>
 /// The tools the assistant gets for the window it lives in: tabs and tab groups, reading pages as text (or a
 /// screenshot), and acting on them, plus the other windows it can reach (its instance's, and other instances' when
@@ -13,13 +14,14 @@ namespace FoxyBrowser716.DataObjects.Complex.Ai;
 /// </summary>
 public static class BrowserTools
 {
+	// Claude Doc
 	/// <summary>Characters per <c>read_page</c> call (~5k tokens), small enough for local models' context windows.</summary>
 	private const int ReadChunk = 20_000;
 
+	// Claude Doc
 	/// <summary><see cref="TabManager.ActiveTabId"/> while the home page or the settings page is showing.</summary>
 	private const int HomeId = -1, SettingsId = -2;
 
-	/// <summary>How long an action waits for a navigation it started to finish loading.</summary>
 	private static readonly TimeSpan NavigationWait = TimeSpan.FromSeconds(10);
 
 	public static List<AiTool> Create(MainWindow window)
@@ -27,7 +29,7 @@ public static class BrowserTools
 		var tabs = window.TabManager;
 
 		#region helpers
-		// tab_id is optional on page tools: no id means the tab the user is looking at
+		//C tab_id is optional on page tools: no id means the tab the user is looking at
 		async Task<(int Id, WebviewTab Tab, CoreWebView2 Core)> Page(IReadOnlyDictionary<string, JsonElement> input)
 		{
 			var id = input.ContainsKey("tab_id") ? GetInt(input, "tab_id") : tabs.ActiveTabId;
@@ -45,8 +47,8 @@ public static class BrowserTools
 			return (id, tab, core);
 		}
 
-		// The chat always reaches its own instance's windows; other instances' only when the user allows it. Private
-		// instances are walled off both ways: a private chat stays in its instance, and nothing looks into a private one.
+		//C The chat always reaches its own instance's windows; other instances' only when the user allows it. Private
+		//C instances are walled off both ways: a private chat stays in its instance, and nothing looks into a private one.
 		bool CanReach(Instance instance) =>
 			instance == window.Instance
 			|| (window.Instance.Settings.AiSeeOtherInstances && !window.Instance.IsPrivate && !instance.IsPrivate);
@@ -56,7 +58,7 @@ public static class BrowserTools
 			: instance.IsPrivate ? "It's a private instance, so the assistant can't look into it."
 			: "The user hasn't let the assistant see other instances (assistant settings → Permissions).";
 
-		// this window's tabs first, then the rest it can reach; tab and group ids are unique across all of them
+		//C this window's tabs first, then the rest it can reach; tab and group ids are unique across all of them
 		IEnumerable<TabManager> Managers() => AppServer.Instances
 			.Where(CanReach)
 			.SelectMany(i => i.Windows)
@@ -92,7 +94,7 @@ public static class BrowserTools
 			throw new AiToolException($"No group with id {id}. Use get_list_of_tabs to see the groups.");
 		}
 
-		// group tools work inside one window, the way the user drags tabs into groups
+		//C group tools work inside one window, the way the user drags tabs into groups
 		TabManager SameWindow(IEnumerable<int> ids)
 		{
 			var managers = ids.Select(id => Tab(id).TabManager).Distinct().ToList();
@@ -117,7 +119,6 @@ public static class BrowserTools
 			_ => "showing nothing yet",
 		};
 
-		// fails the call with a useful message when the page script reports a problem with the element
 		static JsonElement Check(JsonElement result, string elementRef)
 		{
 			if (!result.TryGetProperty("error", out var error)) return result;
@@ -137,8 +138,8 @@ public static class BrowserTools
 
 		static string Describe(JsonElement result, string elementRef) => Check(result, elementRef).GetProperty("desc").GetString() ?? elementRef;
 
-		// Runs a page action, waits for any navigation it starts, and reports where the tab is now and any tabs it opened
-		// (links with target=_blank open a tab and switch to it).
+		//C Runs a page action, waits for any navigation it starts, and reports where the tab is now and any tabs it opened
+		//C (links with target=_blank open a tab and switch to it).
 		async Task<string> Act(int id, CoreWebView2 core, Func<Task> action, string done)
 		{
 			var manager = Tab(id).TabManager;
@@ -204,7 +205,7 @@ public static class BrowserTools
 					var page = await PageAgent.Read(core, start, ReadChunk);
 					if (page.TryGetProperty("empty", out _))
 					{
-						// caught between two documents while navigating
+						//C caught between two documents while navigating
 						await Task.Delay(1000);
 						await PageAgent.WaitForLoad(core, TimeSpan.FromSeconds(5));
 						page = await PageAgent.Read(core, start, ReadChunk);
@@ -759,7 +760,7 @@ public static class BrowserTools
 	private static Dictionary<string, JsonElement> Props(params (string Name, JsonElement Schema)[] properties) =>
 		properties.ToDictionary(p => p.Name, p => p.Schema);
 
-	// tool input isn't validated upstream (it streams in as the model writes it), so check it here
+	//C tool input isn't validated upstream (it streams in as the model writes it), so check it here
 	internal static int GetInt(IReadOnlyDictionary<string, JsonElement> input, string name)
 	{
 		if (input.TryGetValue(name, out var value) && ToInt(value) is { } number) return number;
@@ -771,6 +772,7 @@ public static class BrowserTools
 		: value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out number) ? number
 		: null;
 
+	// Claude Doc
 	/// <summary>A list of non-empty strings; a single string is taken as a list of one.</summary>
 	private static List<string> GetStringArray(IReadOnlyDictionary<string, JsonElement> input, string name)
 	{
@@ -786,6 +788,7 @@ public static class BrowserTools
 		throw new AiToolException($"'{name}' must be a list of strings.");
 	}
 
+	// Claude Doc
 	/// <summary>A list of integers; a single number is taken as a list of one.</summary>
 	private static List<int> GetIntArray(IReadOnlyDictionary<string, JsonElement> input, string name)
 	{
@@ -825,6 +828,7 @@ public static class BrowserTools
 		});
 	}
 
+	// Claude Doc
 	/// <summary>A color given as <c>{ "r": 173, "g": 216, "b": 230 }</c>, each channel 0-255.</summary>
 	private static Color GetColor(IReadOnlyDictionary<string, JsonElement> input, string name)
 	{

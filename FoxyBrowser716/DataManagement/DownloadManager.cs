@@ -8,6 +8,7 @@ using Microsoft.Web.WebView2.Core;
 
 namespace FoxyBrowser716.DataManagement;
 
+// Claude Doc
 /// <summary>
 /// The download list behind the themed downloads panel. One per instance (persisted to Downloads.json).
 /// WebView2 still performs the download; this only tracks the
@@ -30,6 +31,7 @@ public sealed class DownloadManager
 		_store = new FoxyAutoSaverLockedList<Download>("Downloads.json", FoxyFileManager.FolderType.Data, instanceName);
 	}
 
+	// Claude Doc
 	/// <summary>Call once the store has loaded. Downloads that were running when the browser closed cannot resume.</summary>
 	internal void Initialize()
 	{
@@ -150,7 +152,6 @@ public sealed class DownloadManager
 		SyncStore();
 	}
 
-	/// <summary>Removes everything that is not still downloading.</summary>
 	public void ClearFinished()
 	{
 		foreach (var download in Items.Where(d => !d.IsActive).ToList())
@@ -188,6 +189,7 @@ public sealed class DownloadManager
 
 	private static readonly Guid DownloadsFolderId = new("374DE290-123F-4565-9164-39C4925E467B");
 
+	// Claude Doc
 	/// <summary>The user's Downloads known folder (it can be moved, so it is not always %USERPROFILE%\Downloads).</summary>
 	public static string? GetSystemDownloadsFolder()
 	{
@@ -236,7 +238,7 @@ public sealed class DownloadManager
 
 	private void OnDownloadPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
-		// progress ticks only change fields of existing items, so a save request is enough (no list copy)
+		//C progress ticks only change fields of existing items, so a save request is enough (no list copy)
 		_store.RequestSave(null);
 	}
 

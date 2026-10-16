@@ -86,7 +86,7 @@ public partial class PomodoroWidget : WidgetBase
 	private void Render()
 	{
 		var remaining = Remaining < TimeSpan.Zero ? TimeSpan.Zero : Remaining;
-		// round up so the clock shows 25:00 at the start and hits 00:00 exactly when the phase ends
+		//C round up so the clock shows 25:00 at the start and hits 00:00 exactly when the phase ends
 		var totalSeconds = (int)Math.Ceiling(remaining.TotalSeconds);
 		TimeText.Text = totalSeconds >= 3600
 			? $"{totalSeconds / 3600}:{totalSeconds / 60 % 60:00}:{totalSeconds % 60:00}"

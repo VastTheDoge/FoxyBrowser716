@@ -5,6 +5,7 @@ using FoxyBrowser716.ErrorHandeler;
 
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
+// Claude Doc
 /// <summary>
 /// Names a window's tab groups from their tabs with the quick model (<see cref="Settings.BrowserSettings.AiQuickModel"/>),
 /// when <see cref="Settings.BrowserSettings.AiNameTabGroups"/> is on. Only groups still called "Group N", or still
@@ -15,6 +16,7 @@ internal sealed class TabGroupNamer
 	private const string SystemPrompt =
 		"You name groups of browser tabs. Reply with the name only: one to three words in Title Case that say what the tabs have in common. No quotes, emoji or final punctuation.";
 
+	// Claude Doc
 	/// <summary>Waits this long after the last change to a group's tabs, so dragging in several tabs costs one call.</summary>
 	private static readonly TimeSpan Debounce = TimeSpan.FromSeconds(1.5);
 
@@ -79,11 +81,11 @@ internal sealed class TabGroupNamer
 		}
 		catch (OperationCanceledException)
 		{
-			// a newer change took over, or the call took too long
+			//C a newer change took over, or the call took too long
 		}
 		catch (AiNotConfiguredException)
 		{
-			// no key or server yet; the panel says so when it's opened
+			//C no key or server yet; the panel says so when it's opened
 		}
 		catch (Exception e)
 		{
@@ -95,6 +97,7 @@ internal sealed class TabGroupNamer
 		}
 	}
 
+	// Claude Doc
 	/// <summary>The first line, without quotes or trailing punctuation, at most 32 characters.</summary>
 	private static string Clean(string text)
 	{

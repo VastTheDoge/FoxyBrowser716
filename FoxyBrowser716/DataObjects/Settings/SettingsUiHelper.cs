@@ -67,9 +67,11 @@ public abstract class BaseSettingControl : ThemedUserControl
 	protected TextBlock DescriptionBlock;
 	protected StackPanel LeftPanel;
 
+	// Claude Doc
 	/// <summary>Width of the text boxes and drop-downs beside a setting; they scroll inside rather than grow.</summary>
 	protected const double EntryWidth = 260;
 
+	// Claude Doc
 	/// <summary>Room the title and description keep beside the control; with less, the control moves under them.</summary>
 	private const double MinTextWidth = 200;
 	private const double ControlGap = 16;
@@ -146,7 +148,6 @@ public abstract class BaseSettingControl : ThemedUserControl
 	{
 		if (_rightControl is not null)
 		{
-			// the control's own width, with nothing squeezing it
 			_rightControl.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
 			var controlWidth = _rightControl.DesiredSize.Width - _rightControl.Margin.Left - _rightControl.Margin.Right;
 			SetStacked(availableSize.Width < controlWidth + ControlGap + MinTextWidth);
@@ -155,6 +156,7 @@ public abstract class BaseSettingControl : ThemedUserControl
 		return base.MeasureOverride(availableSize);
 	}
 
+	// Claude Doc
 	/// <summary>
 	/// Puts the control under the description instead of beside it, so a narrow page doesn't squeeze the
 	/// description into a column one word wide.
@@ -184,10 +186,6 @@ public abstract class BaseSettingControl : ThemedUserControl
 	}
 }
 
-/// <summary>
-/// Title and description for a custom settings section (extensions, site permissions...), with the
-/// section's own control underneath at full width.
-/// </summary>
 public class CustomControlSettingControl : BaseSettingControl
 {
 	public ThemedUserControl Inner { get; }
@@ -511,7 +509,7 @@ public class SecretSettingControl : BaseSettingControl
 			MinHeight = 28,
 		};
 
-		// saved when the box is left or Enter is pressed, not per keystroke, so a half-typed key is never stored
+		//C saved when the box is left or Enter is pressed, not per keystroke, so a half-typed key is never stored
 		void Commit()
 		{
 			if (passwordBox.Password != secretSetting.Value) secretSetting.Value = passwordBox.Password;

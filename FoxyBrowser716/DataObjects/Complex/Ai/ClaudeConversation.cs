@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json.Nodes;
 using System.Threading;
 using Anthropic;
 using Anthropic.Exceptions;
@@ -9,6 +10,7 @@ using FoxyBrowser716.DataObjects.Settings;
 
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
+// Claude Doc
 /// <summary>
 /// Claude through the official Anthropic SDK (beta endpoint, for refusal fallbacks): streamed replies, adaptive
 /// thinking, a client-side tool loop, and automatic prompt caching of the growing conversation.
@@ -18,6 +20,7 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 {
 	public const string DefaultModel = "claude-opus-5-5";
 
+	// Claude Doc
 	/// <summary>
 	/// Models that take <c>fallbacks: "default"</c>: when a safety classifier declines a request, the API re-serves it
 	/// on a suitable fallback model in the same call instead of stopping.
@@ -25,6 +28,7 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 	private static readonly HashSet<string> FallbackModels = ["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"];
 	private const string FallbackBeta = "server-side-fallback-2026-07-01";
 
+	// Claude Doc
 	/// <summary>
 	/// List prices in $ per million tokens (input, output, cache read), as of 2026-10. Cache writes bill at 1.25x
 	/// input. Only used for the cost estimate shown in the chat panel.
@@ -45,9 +49,9 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 		["claude-haiku-4-5"] = (1m, 5m, 0.10m),
 	};
 
-	/// <summary>The default small model for quick jobs (naming tab groups).</summary>
 	public const string QuickModel = "claude-haiku-5-5";
 
+	// Claude Doc
 	/// <summary>
 	/// Set explicitly: the SDK would otherwise take <c>ANTHROPIC_BASE_URL</c> from the environment, which a browser
 	/// launched from a developer shell may inherit (pointing it at a proxy that rejects the key).
@@ -62,6 +66,21 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 	private static string? _clientKey;
 
 	public override AiProviderKind Kind => AiProviderKind.Claude;
+
+	public override JsonArray ExportHistory()
+	{
+		var history = new JsonArray(_messages.Select(m => JsonSerializer.SerializeToNode(m.RawData)).ToArray());
+		StripImages(history);
+		return history;
+	}
+
+	public override void ImportHistory(JsonArray history)
+	{
+		_messages.Clear();
+		foreach (var node in history)
+			if (node.Deserialize<Dictionary<string, JsonElement>>() is { } raw)
+				_messages.Add(BetaMessageParam.FromRawUnchecked(raw));
+	}
 
 	public override async Task SendAsync(string userMessage, string model, AiEffort effort, AiTurnCallbacks callbacks, CancellationToken cancellationToken = default)
 	{
@@ -88,7 +107,7 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 				var stopReason = response.StopReason?.Raw();
 				if (stopReason == "refusal")
 				{
-					// the whole fallback chain declined; any partial output is discarded with the rolled-back turn
+					//C the whole fallback chain declined; any partial output is discarded with the rolled-back turn
 					var category = response.StopDetails?.Category is { } c ? $" ({c})" : "";
 					throw new InvalidOperationException($"Claude declined this request{category}. Try rephrasing it.");
 				}
@@ -142,6 +161,7 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 		return blocks;
 	}
 
+	// Claude Doc
 	/// <summary>The client for the saved key, shared by every chat; rebuilt when the key changes.</summary>
 	private static AnthropicClient GetClient()
 	{
@@ -155,12 +175,12 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 		return _client;
 	}
 
+	// Claude Doc
 	/// <summary>A 401: says which key was sent (start, end and length only) so a wrong or cut-off paste is easy to spot.</summary>
 	private static AiNotConfiguredException KeyRejected() =>
 		new($"Claude rejected the saved API key ({AiCredentials.Mask(AiCredentials.Get(AiProviderKind.Claude))}). " +
 			"Check it in the assistant's settings (the gear at the top of this panel): it should be a Console API key starting with `sk-ant-api`.");
 
-	/// <summary>Checks the saved key with a cheap call (listing models). Returns a short status for the settings view.</summary>
 	public static async Task<string> TestKeyAsync(CancellationToken cancellationToken = default)
 	{
 		try
@@ -182,7 +202,6 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 		}
 	}
 
-	/// <summary>The models this key can use, newest first, as (id, display name).</summary>
 	public static async Task<List<(string Id, string Name)>> ListModelsAsync(CancellationToken cancellationToken = default)
 	{
 		List<(string, string)> models = [];
@@ -203,7 +222,6 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 		return models;
 	}
 
-	/// <summary>See <see cref="AiConversation.CompleteAsync"/>.</summary>
 	internal static async Task<(string Text, AiUsage Usage)> CompleteAsync(string model, string system, string prompt, CancellationToken cancellationToken)
 	{
 		BetaMessage response;
@@ -246,7 +264,7 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 				Name = t.Name,
 				Description = t.Description,
 				InputSchema = new() { Properties = t.Properties.ToDictionary(), Required = t.Required.ToList() },
-				// tool input arrives unvalidated with this on; the tools check their own arguments
+				//C tool input arrives unvalidated with this on; the tools check their own arguments
 				EagerInputStreaming = true,
 			}).ToList(),
 			Thinking = new BetaThinkingConfigAdaptive(),
@@ -261,7 +279,7 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 					_ => Effort.Medium,
 				},
 			},
-			// caches the whole prefix up to the latest message, so each turn only pays full price for what's new
+			//C caches the whole prefix up to the latest message, so each turn only pays full price for what's new
 			CacheControl = new BetaCacheControlEphemeral(),
 		};
 
@@ -270,6 +288,7 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 			: parameters;
 	}
 
+	// Claude Doc
 	/// <summary>
 	/// Converts a response into the assistant message to append (the SDK has no ToParam). Thinking blocks are kept
 	/// byte-for-byte with their signatures. After a mid-output fallback, only text from before the last fallback
@@ -292,7 +311,7 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 			}
 			else if (i < boundary)
 			{
-				// thinking and tool calls from a model that then declined
+				//C thinking and tool calls from a model that then declined
 			}
 			else if (block.TryPickThinking(out var thinking))
 				content.Add(new BetaThinkingBlockParam { Thinking = thinking.Thinking, Signature = thinking.Signature });
@@ -303,7 +322,7 @@ internal sealed class ClaudeConversation(Func<BrowserSettings> settings, string 
 				content.Add(new BetaToolUseBlockParam { ID = toolUse.ID, Name = toolUse.Name, Input = toolUse.Input });
 				toolUses.Add(toolUse);
 			}
-			// fallback markers are audit-only; this chat declares no server tools
+			//C fallback markers are audit-only; this chat declares no server tools
 		}
 
 		return (content, toolUses);

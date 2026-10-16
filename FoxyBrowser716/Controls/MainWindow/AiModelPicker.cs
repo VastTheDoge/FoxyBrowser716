@@ -5,6 +5,7 @@ using Material.Icons.WinUI3;
 
 namespace FoxyBrowser716.Controls.MainWindow;
 
+// Claude Doc
 /// <summary>
 /// Picks the chat's model, shown in the panel when the model button is clicked. Lists what each provider's API
 /// offers (fetched, with a search box for long lists such as OpenRouter's) and takes a typed-in model id when the
@@ -12,7 +13,6 @@ namespace FoxyBrowser716.Controls.MainWindow;
 /// </summary>
 public sealed partial class AiModelPicker : ThemedUserControl
 {
-	/// <summary>Buttons shown per provider; searching narrows the list further.</summary>
 	private const int MaxShown = 150;
 
 	private readonly BrowserSettings _settings;
@@ -97,7 +97,7 @@ public sealed partial class AiModelPicker : ThemedUserControl
 
 		foreach (var provider in Enum.GetValues<AiProviderKind>())
 		{
-			// the default OpenAI address without a key isn't set up, it's just untouched
+			//C the default OpenAI address without a key isn't set up, it's just untouched
 			if (provider == AiProviderKind.OpenAiCompatible && AiCredentials.Get(provider) is null
 				&& _settings.OpenAiBaseUrl.TrimEnd('/') == "https://api.openai.com/v1")
 			{

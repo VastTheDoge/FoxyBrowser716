@@ -7,6 +7,7 @@ using Microsoft.Web.WebView2.Core;
 
 namespace FoxyBrowser716.Controls.SettingsPage.SettingsCustomControls;
 
+// Claude Doc
 /// <summary>"Clear browsing data" buttons for the instance. Each one asks for a second click before it runs.</summary>
 public sealed partial class BrowsingDataController : ThemedUserControl
 {
@@ -22,7 +23,7 @@ public sealed partial class BrowsingDataController : ThemedUserControl
 		Add(panel, "Clear history", MaterialIconKind.History, async () =>
 		{
 			_mainWindow.Instance.History.Clear();
-			// the engine's own history only colors visited links, but should not outlive ours
+			//C the engine's own history only colors visited links, but should not outlive ours
 			await ClearEngineData(CoreWebView2BrowsingDataKinds.BrowsingHistory);
 		});
 		Add(panel, "Clear downloads list", MaterialIconKind.Download, async () =>
@@ -81,7 +82,6 @@ public sealed partial class BrowsingDataController : ThemedUserControl
 		panel.Children.Add(button);
 	}
 
-	/// <summary>Clears data held by the WebView2 profile shared by this instance's tabs.</summary>
 	private async Task ClearEngineData(CoreWebView2BrowsingDataKinds kinds)
 	{
 		if (_mainWindow.ExtensionPopupWebview.CoreWebView2?.Profile is not { } profile)

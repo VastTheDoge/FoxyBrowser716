@@ -84,6 +84,7 @@ public sealed partial class FTextInput : UserControl
 
     [ObservableProperty] private partial TextWrapping TextWrap { get; set; } = TextWrapping.NoWrap;
 
+    // Claude Doc
     /// <summary>
     /// A box for several lines: Enter adds a line, long lines wrap, and once the box hits its height
     /// (give it a Height or MaxHeight) it scrolls up and down instead of growing.
@@ -100,6 +101,7 @@ public sealed partial class FTextInput : UserControl
         }
     }
 
+    // Claude Doc
     /// <summary>
     /// For a <see cref="Multiline"/> box used to send something (the chat input): Enter raises
     /// <see cref="EnterPressed"/> instead of adding a line, and Shift+Enter or Ctrl+Enter add a line.
@@ -142,9 +144,11 @@ public sealed partial class FTextInput : UserControl
     public event Action<string>? OnTextChanged;
     public event Action? EnterPressed;
 
+    // Claude Doc
     /// <summary>What is in the box right now (<see cref="Text"/> is not updated while typing).</summary>
     public string CurrentText => SearchBox.Text;
 
+    // Claude Doc
     /// <summary>
     /// Replaces what is in the box. Use this rather than <see cref="Text"/> after the user may have typed:
     /// typing does not update <see cref="Text"/>, so assigning the same stale value would do nothing.

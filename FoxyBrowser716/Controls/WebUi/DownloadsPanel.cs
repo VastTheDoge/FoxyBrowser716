@@ -7,6 +7,7 @@ using Windows.ApplicationModel.DataTransfer;
 
 namespace FoxyBrowser716.Controls.WebUi;
 
+// Claude Doc
 /// <summary>Themed replacement for WebView2's download flyout: the list from a <see cref="DownloadManager"/>.</summary>
 public sealed partial class DownloadsPanel : ThemedUserControl
 {
@@ -20,14 +21,13 @@ public sealed partial class DownloadsPanel : ThemedUserControl
 	private readonly FTextButton _clearButton;
 	private readonly Dictionary<Download, DownloadRow> _rows = [];
 
-	/// <param name="getDownloadFolder">Folder opened by the folder button (the configured download folder).</param>
 	public DownloadsPanel(DownloadManager manager, Func<string> getDownloadFolder)
 	{
 		_manager = manager;
 		_getDownloadFolder = getDownloadFolder;
 
 		_title = WebUiStyle.Text("Downloads", 16, bold: true, wrap: false);
-		_folderButton = WebUiStyle.IconButton(MaterialIconKind.FolderOpen, OpenDownloadFolder, 26, 4);
+		_folderButton = WebUiStyle.IconButton(MaterialIconKind.FolderOpen, OpenDownloadFolder, 26, 4, "Open the download folder");
 		_clearButton = WebUiStyle.TextButton("Clear list", () => _manager.ClearFinished(), MaterialIconKind.DeleteSweep);
 
 		var header = new Grid
@@ -64,7 +64,7 @@ public sealed partial class DownloadsPanel : ThemedUserControl
 		_card = WebUiStyle.Card(stack, 8);
 		Content = _card;
 
-		// only listen while visible so a closed panel does not keep rows alive
+		//C only listen while visible so a closed panel does not keep rows alive
 		Loaded += (_, _) =>
 		{
 			_manager.Items.CollectionChanged += ItemsOnCollectionChanged;
@@ -121,7 +121,6 @@ public sealed partial class DownloadsPanel : ThemedUserControl
 	}
 }
 
-/// <summary>One download: name, status line, progress and the actions that apply to its state.</summary>
 public sealed partial class DownloadRow : ThemedUserControl
 {
 	private readonly Download _download;
@@ -178,6 +177,7 @@ public sealed partial class DownloadRow : ThemedUserControl
 		ApplyTheme();
 	}
 
+	// Claude Doc
 	/// <summary>Stops listening to the download (the panel calls this when rows are discarded).</summary>
 	public void Detach() => _download.PropertyChanged -= DownloadOnPropertyChanged;
 
@@ -190,7 +190,7 @@ public sealed partial class DownloadRow : ThemedUserControl
 	{
 		_name.Text = _download.FileName;
 
-		// only completed downloads have a file worth checking (and this runs on every progress tick)
+		//C only completed downloads have a file worth checking (and this runs on every progress tick)
 		var fileExists = _download.Status == DownloadStatus.Completed && DownloadManager.FileExists(_download);
 		var received = DownloadManager.FormatBytes(_download.ReceivedBytes);
 		var total = _download.TotalBytes > 0 ? DownloadManager.FormatBytes(_download.TotalBytes) : null;
@@ -222,7 +222,7 @@ public sealed partial class DownloadRow : ThemedUserControl
 
 		_root.Opacity = _download.Status is DownloadStatus.Cancelled || (_download.Status == DownloadStatus.Completed && !fileExists) ? 0.6 : 1;
 
-		// progress ticks arrive many times a second; only rebuild the buttons when they would change
+		//C progress ticks arrive many times a second; only rebuild the buttons when they would change
 		if (_actionsBuiltFor != _download.Status || _actionsBuiltWithFile != fileExists)
 		{
 			_actionsBuiltFor = _download.Status;
@@ -246,30 +246,30 @@ public sealed partial class DownloadRow : ThemedUserControl
 		switch (_download.Status)
 		{
 			case DownloadStatus.InProgress:
-				AddAction(MaterialIconKind.Pause, () => DownloadManager.Pause(_download));
-				AddAction(MaterialIconKind.Close, () => DownloadManager.Cancel(_download), danger: true);
+				AddAction(MaterialIconKind.Pause, "Pause", () => DownloadManager.Pause(_download));
+				AddAction(MaterialIconKind.Close, "Cancel", () => DownloadManager.Cancel(_download), danger: true);
 				break;
 			case DownloadStatus.Paused:
-				AddAction(MaterialIconKind.Play, () => DownloadManager.Resume(_download));
-				AddAction(MaterialIconKind.Close, () => DownloadManager.Cancel(_download), danger: true);
+				AddAction(MaterialIconKind.Play, "Resume", () => DownloadManager.Resume(_download));
+				AddAction(MaterialIconKind.Close, "Cancel", () => DownloadManager.Cancel(_download), danger: true);
 				break;
 			case DownloadStatus.Completed when fileExists:
-				AddAction(MaterialIconKind.OpenInNew, () => DownloadManager.OpenFile(_download));
-				AddAction(MaterialIconKind.Folder, () => DownloadManager.ShowInFolder(_download));
-				AddAction(MaterialIconKind.Close, () => _manager.Remove(_download), danger: true);
+				AddAction(MaterialIconKind.OpenInNew, "Open", () => DownloadManager.OpenFile(_download));
+				AddAction(MaterialIconKind.Folder, "Show in folder", () => DownloadManager.ShowInFolder(_download));
+				AddAction(MaterialIconKind.Close, "Remove from the list", () => _manager.Remove(_download), danger: true);
 				break;
 			default:
 				if (_download.Status == DownloadStatus.Failed && _download.Operation is { CanResume: true })
-					AddAction(MaterialIconKind.Refresh, () => DownloadManager.Resume(_download));
-				AddAction(MaterialIconKind.LinkVariant, CopyLink);
-				AddAction(MaterialIconKind.Close, () => _manager.Remove(_download), danger: true);
+					AddAction(MaterialIconKind.Refresh, "Retry", () => DownloadManager.Resume(_download));
+				AddAction(MaterialIconKind.LinkVariant, "Copy link", CopyLink);
+				AddAction(MaterialIconKind.Close, "Remove from the list", () => _manager.Remove(_download), danger: true);
 				break;
 		}
 	}
 
-	private void AddAction(MaterialIconKind kind, Action action, bool danger = false)
+	private void AddAction(MaterialIconKind kind, string toolTip, Action action, bool danger = false)
 	{
-		var button = WebUiStyle.IconButton(kind, action, 24, 3);
+		var button = WebUiStyle.IconButton(kind, action, 24, 3, toolTip);
 		button.CurrentTheme = danger ? WebUiStyle.DangerTheme(CurrentTheme) : CurrentTheme;
 		button.Tag = danger;
 		_actions.Children.Add(button);

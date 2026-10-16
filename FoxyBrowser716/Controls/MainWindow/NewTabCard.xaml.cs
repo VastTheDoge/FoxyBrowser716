@@ -43,6 +43,9 @@ public sealed partial class NewTabCard : UserControl
 	
 	[ObservableProperty] public partial Func<ObservableCollection<FMenuItem>>? MenuItemFactory { get; set; }
 
+	//C set for open tabs (not pins): drives the audio badge and the mute / volume button
+	[ObservableProperty] public partial WebviewTab? Tab { get; set; }
+
 	public bool InDrag { get; set; } = false;
 	
 	public event Action<NewTabCard>? DuplicateRequested;
@@ -93,6 +96,77 @@ public sealed partial class NewTabCard : UserControl
 			PrimaryHighlightColor = CurrentTheme.NoColor
 		};
 		ButtonDuplicate.CurrentTheme = CurrentTheme;
+		ButtonAudio.CurrentTheme = CurrentTheme;
+	}
+
+	partial void OnTabChanged(WebviewTab? oldValue, WebviewTab? newValue)
+	{
+		if (oldValue is not null) oldValue.PropertyChanged -= Tab_OnPropertyChanged;
+		if (newValue is not null) newValue.PropertyChanged += Tab_OnPropertyChanged;
+		UpdateAudio();
+	}
+
+	private void Tab_OnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+	{
+		if (e.PropertyName is nameof(WebviewTab.IsPlayingAudio) or nameof(WebviewTab.IsMuted) or nameof(WebviewTab.Volume))
+			UpdateAudio();
+	}
+
+	private void UpdateAudio()
+	{
+		var show = Tab is { } t && (t.IsPlayingAudio || t.IsMuted);
+		var kind = Tab is not { } tab ? MaterialIconKind.VolumeHigh
+			: tab.IsMuted || tab.Volume <= 0 ? MaterialIconKind.VolumeOff
+			: tab.Volume < 0.5 ? MaterialIconKind.VolumeMedium
+			: MaterialIconKind.VolumeHigh;
+		AudioBadge.Visibility = ButtonAudio.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+		AudioBadgeIcon.Kind = kind;
+		ButtonAudio.Content = new MaterialIcon { Kind = kind };
+	}
+
+	private void ButtonAudio_OnOnClick(object sender, RoutedEventArgs e) => Tab?.ToggleMute();
+
+	private void ButtonAudio_OnPointerEntered(object sender, PointerRoutedEventArgs e)
+	{
+		if (Tab is not { } tab) return;
+		var slider = new Slider
+		{
+			Minimum = 0, Maximum = 100, StepFrequency = 1, Width = 120, Value = Math.Round(tab.Volume * 100),
+			Margin = new Thickness(10, 0, 10, 0),
+		};
+		var accent = new SolidColorBrush(CurrentTheme.PrimaryAccentColor);
+		var track = new SolidColorBrush(CurrentTheme.SecondaryBackgroundColor);
+		foreach (var key in new[] { "SliderTrackValueFill", "SliderTrackValueFillPointerOver", "SliderTrackValueFillPressed",
+			         "SliderThumbBackground", "SliderThumbBackgroundPointerOver", "SliderThumbBackgroundPressed" })
+			slider.Resources[key] = accent;
+		foreach (var key in new[] { "SliderTrackFill", "SliderTrackFillPointerOver", "SliderTrackFillPressed" })
+			slider.Resources[key] = track;
+		slider.ValueChanged += async (_, args) => await tab.SetVolume(args.NewValue / 100);
+
+		var label = new TextBlock
+		{
+			Width = 32, VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right,
+			Text = $"{slider.Value:0}%", Foreground = new SolidColorBrush(CurrentTheme.PrimaryForegroundColor),
+		};
+		slider.ValueChanged += (_, args) => label.Text = $"{args.NewValue:0}%";
+
+		var flyout = new Flyout
+		{
+			Content = new StackPanel
+			{
+				Orientation = Orientation.Horizontal, Padding = new Thickness(6, 2, 6, 2), CornerRadius = new CornerRadius(8),
+				BorderThickness = new Thickness(2),
+				BorderBrush = new SolidColorBrush(CurrentTheme.SecondaryBackgroundColor),
+				Background = new SolidColorBrush(CurrentTheme.PrimaryBackgroundColorVeryTransparent),
+				Children = { label, slider },
+			},
+			FlyoutPresenterStyle = ((Flyout)Root.ContextFlyout).FlyoutPresenterStyle,
+		};
+		flyout.ShowAt(ButtonAudio, new FlyoutShowOptions
+		{
+			ShowMode = FlyoutShowMode.TransientWithDismissOnPointerMoveAway,
+			Placement = FlyoutPlacementMode.Right,
+		});
 	}
 	
 	private void ButtonClose_OnOnClick(object sender, RoutedEventArgs e)
@@ -122,7 +196,7 @@ public sealed partial class NewTabCard : UserControl
 	private void Root_OnPointerReleased(object sender, PointerRoutedEventArgs e)
 	{
 		if (e.GetCurrentPoint(this).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonReleased) return;
-		if (ButtonDuplicate.PointerOver || ButtonClose.PointerOver || InDrag) return;
+		if (ButtonDuplicate.PointerOver || ButtonClose.PointerOver || ButtonAudio.PointerOver || InDrag) return;
         
 		ChangeColorAnimation(Root.Background, CurrentTheme.PrimaryBackgroundColorVeryTransparent, 0.3);
 		OnClick?.Invoke(this);
@@ -131,7 +205,7 @@ public sealed partial class NewTabCard : UserControl
 	private void Root_OnPointerPressed(object sender, PointerRoutedEventArgs e)
 	{
 		if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
-		if (ButtonDuplicate.PointerOver || ButtonClose.PointerOver) return;
+		if (ButtonDuplicate.PointerOver || ButtonClose.PointerOver || ButtonAudio.PointerOver) return;
 
 		ChangeColorAnimation(Root.Background, CurrentTheme.PrimaryHighlightColorSlightTransparent, 0.05);
 	}
@@ -139,7 +213,7 @@ public sealed partial class NewTabCard : UserControl
 
 	private void Root_OnManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
 	{
-		if (ButtonDuplicate.PointerOver || ButtonClose.PointerOver)
+		if (ButtonDuplicate.PointerOver || ButtonClose.PointerOver || ButtonAudio.PointerOver)
 		{
 			e.Complete();
 			return;

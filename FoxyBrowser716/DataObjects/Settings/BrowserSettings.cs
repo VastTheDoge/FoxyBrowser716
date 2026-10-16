@@ -29,10 +29,12 @@ public class SettingInfoAttribute : Attribute
     public bool AllowWebsiteUris { get; init; } = false;
     public int MinValue { get; init; } = int.MinValue;
     public int MaxValue { get; init; } = int.MaxValue;
+    // Claude Doc
     /// <summary>String shown as a password box. The property must be [JsonIgnore] and store the value itself (e.g. in the Credential Locker).</summary>
     public bool Secret { get; init; } = false;
 }
 
+// Claude Doc
 /// <summary>Order here is the order categories appear on the settings page.</summary>
 public enum SettingsCategory
 {
@@ -104,7 +106,6 @@ public sealed partial class BrowserSettings : ObservableObject
                         //controls.Add(new SliderSetting(attribute.Name ?? field.Name, attribute.Description ?? "", d, d1 => field.SetValue(this, d1)));
                         break;
                     case Enum e:
-                        // every enum value becomes an option; ids are the underlying values
                         var enumType = field.PropertyType;
                         var enumOptions = Enum.GetValues(enumType).Cast<object>()
                             .Select(v => (EnumOptionName(enumType, v), Convert.ToInt32(v)))
@@ -179,21 +180,28 @@ public sealed partial class BrowserSettings : ObservableObject
             .ToDictionary(p => p.Key, p => p.Value);
     }
 
-    /// <summary>Enum member name to option label: "DiskCache" -> "Disk Cache".</summary>
     private static string HumanizeName(string name) =>
         string.Concat(name.Select((ch, i) => i > 0 && char.IsUpper(ch) && !char.IsUpper(name[i - 1]) ? " " + ch : ch.ToString()));
 
-    /// <summary>The member's [Description] if it has one, otherwise its humanized name.</summary>
     private static string EnumOptionName(Type enumType, object value) =>
         enumType.GetField(value.ToString()!)?.GetCustomAttribute<DescriptionAttribute>()?.Description ?? HumanizeName(value.ToString()!);
 
     #region General
-    //TODO this should be app wide.
+    //C app-wide: stored next to the default data folder by FoxyFileManager, not in this instance's settings
+    [JsonIgnore]
     [SettingInfo(Category = SettingsCategory.General,
         PickerEnabled = true, ItemType = FoxyFileManager.ItemType.Folder,
         Name = "Browser Data Folder Path",
-        Description = "The path to the folder where the browser should load data and save data to. Tip: this feature is intended for use with something like OneDrive to sync browsing data across computers without using accounts and whatnot. (Not used yet.)")]
-    public string BrowserDataPath { get; set => SetProperty(ref field, value); } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FoxyBrowser716");
+        Description = "Where FoxyBrowser keeps its data for every instance: settings, history, pins, bookmarks, extensions and assistant chats. Point it at a OneDrive or Google Drive folder to share that data between computers. A change takes effect the next time FoxyBrowser starts: this computer's data is copied there, unless the folder already holds FoxyBrowser data (for example from your other computer), which is then used instead. Site sign-ins, cookies and caches stay on each computer. Empty means the default folder. Avoid running FoxyBrowser on two computers at the same time from one synced folder.")]
+    public string BrowserDataPath
+    {
+        get => FoxyFileManager.DataFolderSetting;
+        set
+        {
+            FoxyFileManager.DataFolderSetting = value;
+            OnPropertyChanged();
+        }
+    }
 
     //TODO: enum support would be nice here:
     // dictionary map of enum to human readable.
@@ -203,6 +211,14 @@ public sealed partial class BrowserSettings : ObservableObject
 
     [SettingInfo(Category = SettingsCategory.General, Name = "Theme", Description = "Colors used across the browser UI, including menus, prompts and the downloads panel.", Options = nameof(GetComboOptions))]
     public string ThemeName { get; set => SetProperty(ref field, value); } = "Vast Seas";
+
+    [SettingInfo(Category = SettingsCategory.General, Name = "On startup",
+        Description = "What this instance opens when FoxyBrowser starts. After a crash the last session always comes back.")]
+    public StartupMode StartupMode { get; set => SetProperty(ref field, value); } = StartupMode.HomePage;
+
+    [SettingInfo(Category = SettingsCategory.General, Name = "Startup pages",
+        Description = "Used when \"On startup\" is \"Open specific pages\". Separate addresses with spaces.")]
+    public string StartupPages { get; set => SetProperty(ref field, value); } = string.Empty;
 
     [SettingInfo(Category = SettingsCategory.General, Name = "Search suggestions",
         Description = "Ask the search provider for suggestions while typing in the address bar. What you type is sent to Google as you type.")]
@@ -326,6 +342,7 @@ public sealed partial class BrowserSettings : ObservableObject
     [SettingInfo(Category = SettingsCategory.Extensions, Name = "Installed extensions", Description = "Manage installed extensions for the current instance only.")]
     public ExtensionsController? Extensions;
 
+    // Claude Doc
     /// <summary>Folder names (store ids) of extensions the user turned off. Not shown as a setting; edited by <see cref="ExtensionsController"/>.</summary>
     public List<string> DisabledExtensions { get; set => SetProperty(ref field, value); } = [];
     #endregion
@@ -335,36 +352,41 @@ public sealed partial class BrowserSettings : ObservableObject
         Description = "Show the AI assistant panel (☰ menu → AI Assistant) for this instance. Its models, keys, budget and permissions are set in the panel itself (the gear at its top).")]
     public bool AiEnabled { get; set => SetProperty(ref field, value); } = true;
 
-    // The rest are edited in the panel's own settings view (AiSettingsView), not the settings page. API keys and the
-    // Claude budget are shared by every instance and live elsewhere (AiCredentials, AiBudget).
+    //C The rest are edited in the panel's own settings view (AiSettingsView), not the settings page. API keys and the
+    //C Claude budget are shared by every instance and live elsewhere (AiCredentials, AiBudget).
 
-    /// <summary>The model new chats start with; the panel's model menu sets it.</summary>
     public AiModelChoice AiModel { get; set => SetProperty(ref field, value); } = AiModelChoice.Default;
 
-    /// <summary>Claude's effort for new chats; the panel's effort menu sets it.</summary>
     public AiEffort AiEffort { get; set => SetProperty(ref field, value); } = AiEffort.Medium;
 
+    // Claude Doc
     /// <summary>The /v1 address of a server that speaks OpenAI's chat completions API.</summary>
     public string OpenAiBaseUrl { get; set => SetProperty(ref field, value); } = "https://api.openai.com/v1";
 
-    /// <summary>What the assistant may do without asking, for new chats; the mode button changes it per chat.</summary>
     public AiPermissionMode AiPermissionMode { get; set => SetProperty(ref field, value); } = AiPermissionMode.ReadOnly;
 
+    // Claude Doc
     /// <summary>Per-tool choices for <see cref="AiPermissionMode.Custom"/>, by tool name. Edited by <see cref="AiToolPermissionsController"/>; replace the dictionary to save.</summary>
     public Dictionary<string, AiToolPermission> AiToolPermissions { get; set => SetProperty(ref field, value); } = [];
 
-    /// <summary>Name tab groups from their tabs with <see cref="AiQuickModel"/> while they still have the default name.</summary>
     public bool AiNameTabGroups { get; set => SetProperty(ref field, value); } = false;
 
-    /// <summary>A small, cheap model for quick jobs like naming tab groups.</summary>
     public AiModelChoice AiQuickModel { get; set => SetProperty(ref field, value); } = AiModelChoice.DefaultQuick;
 
+    // Claude Doc
     /// <summary>
     /// Let the assistant see and use other instances' windows and tabs; it always has this instance's. Private
     /// instances stay walled off either way.
     /// </summary>
     public bool AiSeeOtherInstances { get; set => SetProperty(ref field, value); } = false;
 
+    //C null until changed: then chats are saved except in private instances
+    public bool? AiSaveChats { get; set => SetProperty(ref field, value); }
+
+    [JsonIgnore]
+    public bool AiSaveChatsEffective => AiSaveChats ?? !PrivateBrowsing;
+
+    // Claude Doc
     /// <summary>The chat panel's system prompt for new chats; empty uses <see cref="AiChat.DefaultSystemPrompt"/>, so edits to the default still reach users who never changed it.</summary>
     public string AiSystemPrompt { get; set => SetProperty(ref field, value); } = "";
     #endregion
@@ -429,6 +451,13 @@ public sealed partial class BrowserSettings : ObservableObject
      *
      */
     //TODO: need default static setting to use if none.
+}
+
+public enum StartupMode
+{
+    [Description("Open the home page")] HomePage,
+    [Description("Continue where I left off")] ContinueWhereLeftOff,
+    [Description("Open specific pages")] SpecificPages,
 }
 
 public partial class PerformanceSettings : ObservableObject

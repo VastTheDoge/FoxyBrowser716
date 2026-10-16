@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 
 namespace FoxyBrowser716.Controls.WebUi;
 
+// Claude Doc
 /// <summary>
 /// Small themed notifications in the bottom-right corner of a window ("Extension installed", errors from
 /// background work). They stack, and each closes by itself after a few seconds or when clicked.
@@ -27,6 +28,7 @@ public sealed class ToastHost
 		}
 	} = DefaultThemes.DarkMode;
 
+	// Claude Doc
 	/// <param name="host">Panel the popup is added to; toasts are placed at its bottom-right corner.</param>
 	public ToastHost(Panel host)
 	{

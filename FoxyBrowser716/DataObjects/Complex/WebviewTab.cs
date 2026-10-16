@@ -24,7 +24,18 @@ public partial class WebviewTab : ObservableObject
 	[ObservableProperty] public partial WebView2 Core { get; private set; }
 	
 	public Task InitializeTask { get; private set; }
-	
+	public Task CoreTask { get; private set; }
+
+	//C the tab whose window.open made this one; closing this tab goes back to it
+	public int? OpenerTabId { get; set; }
+
+	[JsonIgnore] [ObservableProperty] public partial bool IsPlayingAudio { get; private set; }
+	[JsonIgnore] [ObservableProperty] public partial bool IsMuted { get; private set; }
+	//C 0..1, applied by VolumeScript (WebView2 has mute but no per-tab volume)
+	[JsonIgnore] [ObservableProperty] public partial double Volume { get; private set; } = 1;
+	private string? _volumeScriptId;
+	private readonly List<CoreWebView2Frame> _frames = [];
+
 	private static readonly HashSet<int> _boostedProcessIds = [];
 	private static readonly object _boostLock = new();
 	
@@ -45,6 +56,7 @@ public partial class WebviewTab : ObservableObject
 		Info = info;
 		Core = core;
 		
+		CoreTask = CreateCore();
 		InitializeTask = CoreWebView2Initialization();
 		
 		GetMenuItems = () =>
@@ -65,38 +77,23 @@ public partial class WebviewTab : ObservableObject
 		};
 	}
 
-	private async Task CoreWebView2Initialization()
+	private async Task CreateCore()
 	{
 		if (TabManager.Instance.IsPrivate)
 		{
-			// InPrivate: an off-the-record profile shared by the instance's tabs, discarded when they all close
+			//C InPrivate: an off-the-record profile shared by the instance's tabs, discarded when they all close
 			var options = TabManager.WebsiteEnvironment!.CreateCoreWebView2ControllerOptions();
 			options.IsInPrivateModeEnabled = true;
 			await Core.EnsureCoreWebView2Async(TabManager.WebsiteEnvironment, options);
 		}
 		else
 			await Core.EnsureCoreWebView2Async(TabManager.WebsiteEnvironment);
-		
-		// await TabManager.Instance.AddExtensions(Core);
-		//  TabManager.Instance.RegisterStoreButtonCallback(json => {
-		// 	// json contains: host, url, originalText, type
-		// 	// e.g. read the url:
-		// 	if (json.TryGetProperty("url", out var urlProp)) {
-		// 		var url = urlProp.GetString();
-		// 		// do something: log, open UI, start extension install, etc.
-		// 		System.Diagnostics.Debug.WriteLine("Clicked store button on: " + url);
-		// 	}
-		// });
-		
-		//await TabManager.Instance.InjectStoreButtonInterceptor(Core);
 
-		var extensionSetupTask = TabManager.Instance.SetupExtensionSupport(Core);
-		
 		// Core.AllowExternalDrop = true;
 		Core.AllowDrop = true;
 		// Core.CompositeMode = ElementCompositeMode.MinBlend;
-		
-		// only seen when the themed downloads panel is turned off in settings
+
+		//C only seen when the themed downloads panel is turned off in settings
 		Core.CoreWebView2.DefaultDownloadDialogCornerAlignment = CoreWebView2DefaultDownloadDialogCornerAlignment.TopLeft;
 		Core.CoreWebView2.DefaultDownloadDialogMargin = new Point(0, 0);
 
@@ -113,13 +110,108 @@ public partial class WebviewTab : ObservableObject
 		Core.CoreWebView2.WindowCloseRequested += CoreWebView2OnWindowCloseRequested;
 		Core.CoreWebView2.ProcessFailed += CoreWebView2OnProcessFailed;
 
-		// themed replacements for the browser engine's own UI, shown by the window that hosts this tab
 		Core.CoreWebView2.PermissionRequested += (_, args) => TabManager.Window.OnTabPermissionRequested(this, args);
 		Core.CoreWebView2.ContextMenuRequested += (_, args) => TabManager.Window.OnTabContextMenuRequested(this, args);
 		Core.CoreWebView2.ScriptDialogOpening += (_, args) => TabManager.Window.OnTabScriptDialogOpening(this, args);
 		Core.CoreWebView2.BasicAuthenticationRequested += (_, args) => TabManager.Window.OnTabBasicAuthenticationRequested(this, args);
 		Core.CoreWebView2.DownloadStarting += (_, args) => TabManager.Window.OnTabDownloadStarting(this, args);
+
+		Core.CoreWebView2.IsDocumentPlayingAudioChanged += (_, _) => IsPlayingAudio = Core.CoreWebView2.IsDocumentPlayingAudio;
+		Core.CoreWebView2.IsMutedChanged += (_, _) => IsMuted = Core.CoreWebView2.IsMuted;
+		Core.CoreWebView2.FrameCreated += (_, args) =>
+		{
+			var frame = args.Frame;
+			_frames.Add(frame);
+			frame.Destroyed += (_, _) => _frames.Remove(frame);
+		};
+	}
+
+	public void ToggleMute()
+	{
+		if (Core.CoreWebView2 is { } core)
+			core.IsMuted = !core.IsMuted;
+	}
+
+	public async Task SetVolume(double volume)
+	{
+		Volume = Math.Clamp(volume, 0, 1);
+		if (Core.CoreWebView2 is not { } core) return;
+		//C slider drags call this many times; one at a time so only one volume script stays registered
+		await _volumeLock.WaitAsync();
+		try
+		{
+			//C re-register so documents created later start at this volume, then update the ones already open
+			if (_volumeScriptId is not null)
+				core.RemoveScriptToExecuteOnDocumentCreated(_volumeScriptId);
+			var script = VolumeScript.Replace("__SCALE__", Volume.ToString(System.Globalization.CultureInfo.InvariantCulture));
+			_volumeScriptId = await core.AddScriptToExecuteOnDocumentCreatedAsync(script);
+
+			var update = script + $";window.__foxyVolume({Volume.ToString(System.Globalization.CultureInfo.InvariantCulture)});";
+			await core.ExecuteScriptAsync(update);
+			foreach (var frame in _frames.ToList())
+			{
+				try { await frame.ExecuteScriptAsync(update); }
+				catch { /* frame went away */ }
+			}
+		}
+		catch (Exception e)
+		{
+			FoxyLogger.AddError(e);
+		}
+		finally
+		{
+			_volumeLock.Release();
+		}
+	}
+
+	private readonly SemaphoreSlim _volumeLock = new(1, 1);
+
+	//C scales HTMLMediaElement volume; pages still read back the volume they set. Web Audio isn't covered.
+	private const string VolumeScript =
+		"""
+		(() => {
+			if (window.__foxyVolume) return;
+			const d = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'volume');
+			const wanted = new WeakMap(), refs = new Set();
+			let scale = __SCALE__;
+			const track = el => { if (!wanted.has(el)) { wanted.set(el, d.get.call(el)); refs.add(new WeakRef(el)); } };
+			const apply = el => { track(el); d.set.call(el, Math.min(1, Math.max(0, wanted.get(el) * scale))); };
+			Object.defineProperty(HTMLMediaElement.prototype, 'volume', {
+				configurable: true, enumerable: d.enumerable,
+				get() { return wanted.has(this) ? wanted.get(this) : d.get.call(this); },
+				set(v) { d.set.call(this, v); track(this); wanted.set(this, +v); apply(this); }
+			});
+			const play = HTMLMediaElement.prototype.play;
+			HTMLMediaElement.prototype.play = function (...a) { apply(this); return play.apply(this, a); };
+			document.addEventListener('play', e => { if (e.target instanceof HTMLMediaElement) apply(e.target); }, true);
+			Object.defineProperty(window, '__foxyVolume', { enumerable: false, value: s => {
+				scale = s;
+				for (const r of refs) { const el = r.deref(); if (el) apply(el); else refs.delete(r); }
+				document.querySelectorAll('audio,video').forEach(apply);
+			}});
+			if (scale !== 1) document.querySelectorAll('audio,video').forEach(apply);
+		})();
+		""";
+
+	private async Task CoreWebView2Initialization()
+	{
+		await CoreTask;
+
+		// await TabManager.Instance.AddExtensions(Core);
+		//  TabManager.Instance.RegisterStoreButtonCallback(json => {
+		// 	// json contains: host, url, originalText, type
+		// 	// e.g. read the url:
+		// 	if (json.TryGetProperty("url", out var urlProp)) {
+		// 		var url = urlProp.GetString();
+		// 		// do something: log, open UI, start extension install, etc.
+		// 		System.Diagnostics.Debug.WriteLine("Clicked store button on: " + url);
+		// 	}
+		// });
 		
+		//await TabManager.Instance.InjectStoreButtonInterceptor(Core);
+
+		var extensionSetupTask = TabManager.Instance.SetupExtensionSupport(Core);
+
 		//performance stuff
 		var processId = Core.CoreWebView2.BrowserProcessId;
 		
@@ -137,6 +229,7 @@ public partial class WebviewTab : ObservableObject
 
 	private string? _defaultUserAgent;
 
+	// Claude Doc
 	/// <summary>
 	/// Pushes <see cref="DataObjects.Settings.BrowserSettings"/> into this tab's WebView2. Called once the core
 	/// exists and again by the window whenever a setting changes, so changes apply without reopening tabs.
@@ -158,7 +251,7 @@ public partial class WebviewTab : ObservableObject
 			settings.IsGeneralAutofillEnabled = s.GeneralAutofillEnabled;
 			settings.IsPasswordAutosaveEnabled = s.PasswordAutosaveEnabled;
 			settings.IsReputationCheckingRequired = s.SmartScreenEnabled;
-			// with this off, WebView2 raises ScriptDialogOpening and the window shows the themed dialog
+			//C with this off, WebView2 raises ScriptDialogOpening and the window shows the themed dialog
 			settings.AreDefaultScriptDialogsEnabled = !s.ThemedDialogs;
 
 			var userAgent = string.IsNullOrWhiteSpace(s.CustomUserAgent) ? _defaultUserAgent : s.CustomUserAgent.Trim();
@@ -179,7 +272,7 @@ public partial class WebviewTab : ObservableObject
 		}
 		catch (Exception e)
 		{
-			// the core can be closing while settings change
+			//C the core can be closing while settings change
 			FoxyLogger.AddError(e);
 		}
 	}
@@ -232,17 +325,14 @@ public partial class WebviewTab : ObservableObject
 		TabManager.RemoveTab(Id);
 	}
 
-	private void CoreWebView2OnNewWindowRequested(CoreWebView2 sender, CoreWebView2NewWindowRequestedEventArgs args)
-	{
-		TabManager.SwapActiveTabTo(TabManager.AddTab(args.Uri));
-		args.Handled = true;
-	}
+	private void CoreWebView2OnNewWindowRequested(CoreWebView2 sender, CoreWebView2NewWindowRequestedEventArgs args) =>
+		TabManager.OpenNewWindowAsTab(args, Id);
 
 	private void CoreWebView2OnSourceChanged(CoreWebView2 sender, CoreWebView2SourceChangedEventArgs args)
 	{
 		Info.Url = Core.CoreWebView2.Source;
 
-		// same-document navigations (single-page apps) never raise NavigationCompleted
+		//C same-document navigations (single-page apps) never raise NavigationCompleted
 		if (!args.IsNewDocument)
 			RecordHistory();
 	}
@@ -336,6 +426,18 @@ public partial class WebviewTab : ObservableObject
 	private ObservableCollection<FMenuItem> BaseItems =>
 	[
 		new() { Text = "Close", Action = () => TabManager.RemoveTab(Id) },
+		new() { Text = "Close other tabs", Action = () =>
+		{
+			foreach (var id in TabManager.GetAllTabs().Keys.Where(id => id != Id))
+				TabManager.RemoveTab(id);
+		} },
+		new() { Text = "Close tabs below", Action = () =>
+		{
+			var list = TabManager.Groups.FirstOrDefault(g => g.Tabs.Contains(this))?.Tabs ?? TabManager.Tabs;
+			foreach (var tab in list.Skip(list.IndexOf(this) + 1).ToList())
+				TabManager.RemoveTab(tab.Id);
+		} },
+		new() { Text = "Reload", Action = () => Core.CoreWebView2?.Reload() },
 		new() { Text = "Duplicate", Action = () =>
 		{
 			var groupId = TabManager.Groups.FirstOrDefault(g => g.Tabs.Contains(this))?.Id;
@@ -343,7 +445,15 @@ public partial class WebviewTab : ObservableObject
 			TabManager.SwapActiveTabTo(id);
 			if (groupId is { } gid)
 				TabManager.MoveTabToGroup(id, gid);
-			
+
+		} },
+		new() { Text = IsMuted ? "Unmute" : "Mute", Action = ToggleMute },
+		new() { Text = TabManager.Instance.IsPinned(Info.Url) ? "Unpin" : "Pin", Action = () => TabManager.Instance.TogglePin(Info) },
+		new() { Text = TabManager.Instance.IsBookmarked(Info.Url) ? "Remove bookmark" : "Bookmark", Action = () => TabManager.Instance.ToggleBookmark(Info) },
+		new() { Text = "Move to new window", Action = async () =>
+		{
+			var window = TabManager.Window.AppWindow;
+			await TabManager.CreateWindowWithTab(this, new Rect(window.Position.X + 40, window.Position.Y + 40, window.Size.Width, window.Size.Height));
 		} },
 		new() { Text = "Move to new group", Action = () => TabManager.MoveTabToGroup(Id, TabManager.CreateGroup().Id) },
 	];

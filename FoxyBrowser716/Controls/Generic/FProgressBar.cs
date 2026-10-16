@@ -1,12 +1,12 @@
 namespace FoxyBrowser716.Controls.Generic;
 
-/// <summary>A thin themed progress bar (highlight fill on an accent track).</summary>
 public sealed partial class FProgressBar : UserControl
 {
 	private readonly Grid _root;
 	private readonly Border _fill;
 	private readonly Border _track;
 
+	// Claude Doc
 	/// <summary>0 to 1. Values outside are clamped.</summary>
 	public double Value
 	{
@@ -19,7 +19,6 @@ public sealed partial class FProgressBar : UserControl
 		}
 	}
 
-	/// <summary>Dims the fill, e.g. while paused.</summary>
 	public bool IsMuted
 	{
 		get;

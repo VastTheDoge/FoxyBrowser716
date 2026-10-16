@@ -131,10 +131,11 @@ public sealed partial class SettingsPage : UserControl
     {
         CustomControlSetting custom => custom.Description,
         ButtonSetting button => button.Description,
-        // Setting<T> is generic, so read its Description without knowing T
+        //C Setting<T> is generic, so read its Description without knowing T
         _ => setting.GetType().GetProperty("Description")?.GetValue(setting) as string ?? string.Empty,
     };
 
+    // Claude Doc
     /// <summary>Scrolls the settings list to a category's header (clearing any search that hides it).</summary>
     public void ScrollToCategory(SettingsCategory category)
     {
@@ -146,7 +147,7 @@ public sealed partial class SettingsPage : UserControl
             ApplySearch(string.Empty);
         }
 
-        // the page may have only just been made visible; let it lay out first
+        //C the page may have only just been made visible; let it lay out first
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             header.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0, AnimationDesired = true }));
     }

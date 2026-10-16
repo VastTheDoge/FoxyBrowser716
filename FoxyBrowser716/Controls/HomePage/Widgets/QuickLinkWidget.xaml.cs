@@ -39,7 +39,7 @@ public partial class QuickLinkWidget : WidgetBase
 		var iconUrl = !string.IsNullOrWhiteSpace(_iconUrl) ? _iconUrl.Trim()
 			: uri is null ? null
 			: $"{uri.Scheme}://{uri.Host}/favicon.ico";
-		// settings callbacks fire once each on load; only refetch the icon when it actually changes
+		//C settings callbacks fire once each on load; only refetch the icon when it actually changes
 		if (IconHost.Child is null || iconUrl != _shownIconUrl)
 			IconHost.Child = CreateFavicon(iconUrl, 64, new SolidColorBrush(CurrentTheme.SecondaryForegroundColor));
 		_shownIconUrl = iconUrl;

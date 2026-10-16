@@ -5,7 +5,6 @@ using Windows.System.Power;
 
 namespace FoxyBrowser716.Controls.HomePage.Widgets;
 
-// A mini Task Manager: CPU (with a one-minute graph), memory, battery and system-drive space.
 [WidgetInfo("System Monitor Widget", MaterialIconKind.MonitorDashboard, WidgetCategory.Tools)]
 public partial class SystemMonitorWidget : WidgetBase
 {
@@ -16,7 +15,6 @@ public partial class SystemMonitorWidget : WidgetBase
 
 	private enum Tone { Normal, Good, Bad }
 
-	/// <summary>Label + value on one line, a thin usage bar under it.</summary>
 	private sealed class MetricRow
 	{
 		public readonly StackPanel Panel;
@@ -60,7 +58,6 @@ public partial class SystemMonitorWidget : WidgetBase
 	protected SystemMonitorWidget()
 	{
 		InitializeComponent();
-		// the graph belongs to the CPU row, so CPU goes above it and everything else below
 		_cpu = AddRow("CPU", aboveGraph: true);
 		_memory = AddRow("Memory");
 		_battery = AddRow("Battery");
@@ -112,7 +109,7 @@ public partial class SystemMonitorWidget : WidgetBase
 
 	protected override Task Initialize()
 	{
-		// re-baseline after being off screen, or the first sample would average over the whole gap
+		//C re-baseline after being off screen, or the first sample would average over the whole gap
 		Unloaded += (_, _) => _hasCpuBaseline = false;
 		CreateLiveTimer(TimeSpan.FromSeconds(1), Tick);
 		ApplyTheme();
@@ -136,7 +133,7 @@ public partial class SystemMonitorWidget : WidgetBase
 	private void SampleCpu()
 	{
 		var now = Environment.TickCount64;
-		// Loaded can tick right after another tick; a few-ms window gives a meaningless reading
+		//C Loaded can tick right after another tick; a few-ms window gives a meaningless reading
 		if (_hasCpuBaseline && now - _lastSampleAt < 250) return;
 		if (!GetSystemTimes(out var idleTime, out var kernelTime, out var userTime)) return;
 
@@ -183,7 +180,7 @@ public partial class SystemMonitorWidget : WidgetBase
 		}
 		catch
 		{
-			// no power service (e.g. under Wine): treat as a desktop
+			//C no power service (e.g. under Wine): treat as a desktop
 			status = BatteryStatus.NotPresent;
 			supply = PowerSupplyStatus.NotPresent;
 			percent = 0;
@@ -208,7 +205,7 @@ public partial class SystemMonitorWidget : WidgetBase
 		_diskQueryRunning = true;
 		try
 		{
-			// real disk I/O, so keep it off the UI thread
+			//C real disk I/O, so keep it off the UI thread
 			var drive = _systemDrive;
 			var (total, free) = await Task.Run(() =>
 			{
@@ -246,7 +243,7 @@ public partial class SystemMonitorWidget : WidgetBase
 
 	private void RenderGraph()
 	{
-		// fresh collections each time: WinUI doesn't reliably redraw a shape whose Points were edited in place
+		//C fresh collections each time: WinUI doesn't reliably redraw a shape whose Points were edited in place
 		var line = new PointCollection();
 		var fill = new PointCollection();
 		var step = DesignWidth / (GraphSamples - 1);
@@ -300,7 +297,7 @@ public partial class SystemMonitorWidget : WidgetBase
 
 	#region Native
 
-	// the fields are written by kernel32, which the compiler can't see
+	//C the fields are written by kernel32, which the compiler can't see
 #pragma warning disable CS0649
 	[StructLayout(LayoutKind.Sequential)]
 	private struct FileTime

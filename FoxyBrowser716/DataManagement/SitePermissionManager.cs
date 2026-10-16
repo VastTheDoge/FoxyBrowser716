@@ -4,6 +4,7 @@ using Microsoft.Web.WebView2.Core;
 
 namespace FoxyBrowser716.DataManagement;
 
+// Claude Doc
 /// <summary>
 /// Remembered per-site permission decisions for one instance (SitePermissions.json), plus the static
 /// per-kind text/icons the prompt and settings UI share.
@@ -25,13 +26,13 @@ public sealed class SitePermissionManager
 		_store = new FoxyAutoSaverLockedList<SitePermission>("SitePermissions.json", FoxyFileManager.FolderType.Data, instanceName);
 	}
 
+	// Claude Doc
 	/// <summary>scheme://host[:port] for a page URI, which is what permissions are keyed on.</summary>
 	public static string GetOrigin(string uri) =>
 		Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && !string.IsNullOrEmpty(parsed.Host)
 			? parsed.GetLeftPart(UriPartial.Authority)
 			: uri;
 
-	/// <summary>Host part of an origin for display ("maps.google.com").</summary>
 	public static string GetDisplayHost(string originOrUri) =>
 		Uri.TryCreate(originOrUri, UriKind.Absolute, out var parsed) && !string.IsNullOrEmpty(parsed.Host)
 			? parsed.Host
@@ -73,6 +74,7 @@ public sealed class SitePermissionManager
 		.ThenBy(p => p.Kind)
 		.ToList());
 
+	// Claude Doc
 	/// <summary>
 	/// What to do with a request right now: a remembered decision, else the setting's default.
 	/// Null means ask the user.
@@ -124,6 +126,7 @@ public sealed class SitePermissionManager
 		_ => "Unknown permission",
 	};
 
+	// Claude Doc
 	/// <summary>Completes "{site} wants to ..." in the prompt.</summary>
 	public static string GetRequestText(CoreWebView2PermissionKind kind) => kind switch
 	{

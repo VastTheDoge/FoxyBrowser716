@@ -3,6 +3,7 @@ using FoxyBrowser716.DataObjects.Settings;
 
 namespace FoxyBrowser716.Controls.SettingsPage.SettingsCustomControls;
 
+// Claude Doc
 /// <summary>Allow / Ask / Block for each assistant tool, used by the Custom permission mode.</summary>
 public sealed partial class AiToolPermissionsController : ThemedUserControl
 {

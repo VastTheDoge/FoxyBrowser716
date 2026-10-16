@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace FoxyBrowser716.StaticData;
 
+// Claude Doc
 /// <summary>
 /// How the app is hosted. Packaged = installed as MSIX (has package identity); unpackaged = a plain exe folder
 /// (built with -p:FoxyUnpackaged=true), which is also how it runs under Wine/Proton on Linux.
@@ -19,12 +20,14 @@ public static class AppEnvironment
 
     private const int AppModelErrorNoPackage = 15700;
 
+    // Claude Doc
     /// <summary>
     /// True when running with MSIX package identity. Packaged-only APIs (ApplicationData.Current, Package.Current,
     /// StartupTask, AppInfo.Current, prelaunch) throw without it, so guard them with this.
     /// </summary>
     public static readonly bool IsPackaged = CheckIsPackaged();
 
+    // Claude Doc
     /// <summary>
     /// True when running under Wine/Proton (ntdll exports wine_get_version, which real Windows never does).
     /// </summary>

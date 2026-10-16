@@ -65,8 +65,8 @@ public partial class PhotoFrameWidget : WidgetBase
 	protected override Task Initialize()
 	{
 		_initialized = true;
-		// nothing decodes while off-screen, so restart the load timeout on Loaded (registered before the live timer,
-		// so this runs before its immediate tick)
+		//C nothing decodes while off-screen, so restart the load timeout on Loaded (registered before the live timer,
+		//C so this runs before its immediate tick)
 		Loaded += (_, _) => _loadStartedAt = DateTime.Now;
 		CreateLiveTimer(TimeSpan.FromSeconds(1), Tick);
 		ApplyTheme();
@@ -85,7 +85,7 @@ public partial class PhotoFrameWidget : WidgetBase
 	{
 		text = CleanPath(text);
 		if (text.Length == 0) return null;
-		// local paths parse as file: uris, which BitmapImage loads directly (same as the home page background)
+		//C local paths parse as file: uris, which BitmapImage loads directly (same as the home page background)
 		if (Uri.TryCreate(text, UriKind.Absolute, out var uri) && uri.Scheme is "file" or "http" or "https" or "ms-appx" or "ms-appdata")
 			return uri;
 		return NormalizeUrl(text); // bare "example.com/photo.jpg"
@@ -93,7 +93,7 @@ public partial class PhotoFrameWidget : WidgetBase
 
 	private void ScheduleReload()
 	{
-		// callbacks also fire while saved settings load, before Initialize, which does the first load itself
+		//C callbacks also fire while saved settings load, before Initialize, which does the first load itself
 		if (_initialized) _ = DebouncedReloadAsync();
 	}
 
@@ -104,7 +104,7 @@ public partial class PhotoFrameWidget : WidgetBase
 		_debounceCts = cts;
 		try
 		{
-			// the path boxes report every keystroke; let typing settle before touching the disk or network
+			//C the path boxes report every keystroke; let typing settle before touching the disk or network
 			await Task.Delay(TimeSpan.FromMilliseconds(600), cts.Token);
 		}
 		catch (OperationCanceledException)
@@ -144,7 +144,7 @@ public partial class PhotoFrameWidget : WidgetBase
 		try
 		{
 			if (!Directory.Exists(folder)) return new List<string>();
-			// IgnoreInaccessible: one locked subfolder shouldn't hide every other picture
+			//C IgnoreInaccessible: one locked subfolder shouldn't hide every other picture
 			return Directory.EnumerateFiles(folder, "*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true })
 				.Where(path => ImageExtensions.Contains(Path.GetExtension(path)))
 				.Order(StringComparer.OrdinalIgnoreCase)
@@ -163,7 +163,7 @@ public partial class PhotoFrameWidget : WidgetBase
 		var version = _reloadVersion;
 		var slides = await ScanFolderAsync(CleanPath(_folderText));
 		_rescanning = false;
-		// a settings change or giving up since the scan started wins; a folder that came back empty keeps the old list
+		//C a settings change or giving up since the scan started wins; a folder that came back empty keeps the old list
 		if (version != _reloadVersion || _slides.Count == 0 || slides.Count == 0) return;
 		var current = _slides[_slideIndex % _slides.Count];
 		_slides = slides;
@@ -175,12 +175,12 @@ public partial class PhotoFrameWidget : WidgetBase
 		var now = DateTime.Now;
 		if (_loadingLayer >= 0)
 		{
-			// a load that never reports back shouldn't stall the frame; show whatever the layer has by now
+			//C a load that never reports back shouldn't stall the frame; show whatever the layer has by now
 			if (now - _loadStartedAt > LoadTimeout) Reveal(_loadingLayer);
 			return;
 		}
 
-		// once the cross-fade is over, drop the hidden picture so only one decoded photo stays in memory
+		//C once the cross-fade is over, drop the hidden picture so only one decoded photo stays in memory
 		if (_front >= 0 && now - _revealedAt > FadeDuration * 2 && _brushes[1 - _front].ImageSource is not null)
 			_brushes[1 - _front].ImageSource = null;
 
@@ -208,6 +208,7 @@ public partial class PhotoFrameWidget : WidgetBase
 		}
 	}
 
+	// Claude Doc
 	/// <summary>Moves past an unreadable slide; false (and an error state) once a whole pass has failed.</summary>
 	private bool SkipFailedSlide()
 	{
@@ -220,7 +221,6 @@ public partial class PhotoFrameWidget : WidgetBase
 		return true;
 	}
 
-	/// <summary>Loads <paramref name="uri"/> into the hidden layer; it's revealed once it has decoded.</summary>
 	private void ShowPicture(Uri uri)
 	{
 		var target = _front == 0 ? 1 : 0;
@@ -233,7 +233,7 @@ public partial class PhotoFrameWidget : WidgetBase
 			var bitmap = new BitmapImage();
 			bitmap.ImageOpened += (_, _) => OnPictureOpened(target, bitmap);
 			bitmap.ImageFailed += (_, _) => OnPictureFailed(target, bitmap);
-			// source set after attaching, XAML's recommended order for decoding at display size
+			//C source set after attaching, XAML's recommended order for decoding at display size
 			_brushes[target].ImageSource = bitmap;
 			bitmap.UriSource = uri;
 		}
@@ -243,7 +243,7 @@ public partial class PhotoFrameWidget : WidgetBase
 		}
 	}
 
-	// both the bitmap and its brush report; only the first report for the picture currently loading counts
+	//C both the bitmap and its brush report; only the first report for the picture currently loading counts
 	private void OnPictureOpened(int layer, ImageSource? source)
 	{
 		if (layer != _loadingLayer || !ReferenceEquals(_brushes[layer].ImageSource, source)) return;
@@ -257,7 +257,6 @@ public partial class PhotoFrameWidget : WidgetBase
 		_brushes[layer].ImageSource = null;
 		if (_slides.Count > 0)
 		{
-			// the current picture stays up while we move on to the next file
 			if (SkipFailedSlide()) ShowSlide();
 		}
 		else ShowNothing("Couldn't load the picture", isError: true);
@@ -270,7 +269,6 @@ public partial class PhotoFrameWidget : WidgetBase
 		var previous = _front;
 		_front = layer;
 		_revealedAt = DateTime.Now;
-		// the new picture fades in on top while the old one fades out underneath
 		Canvas.SetZIndex(_layers[layer], 1);
 		_layers[layer].Opacity = 1;
 		if (previous >= 0 && previous != layer)

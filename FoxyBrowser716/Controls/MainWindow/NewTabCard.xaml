@@ -65,13 +65,21 @@
             <ColumnDefinition Width="*" MinWidth="0"/>
             <ColumnDefinition Width="*" MinWidth="0" MaxWidth="21"/>
             <ColumnDefinition Width="*" MinWidth="0" MaxWidth="21"/>
+            <ColumnDefinition Width="*" MinWidth="0" MaxWidth="21"/>
         </Grid.ColumnDefinitions>
         
         <ContentControl Grid.Column="0" Margin="2,2,2,2" Width="18" Height="18" 
                         Content="{x:Bind Icon, Mode=OneWay}" />
+        <Border Grid.Column="0" x:Name="AudioBadge" Width="11" Height="11" CornerRadius="6" Margin="0,0,0,1" Visibility="Collapsed"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom" IsHitTestVisible="False"
+                Background="{x:Bind CurrentTheme.PrimaryBackgroundColor, Converter={StaticResource ColorToBrushConverter}, Mode=OneWay}">
+            <material:MaterialIcon x:Name="AudioBadgeIcon" Kind="VolumeHigh" Width="9" Height="9"
+                                   Foreground="{x:Bind CurrentTheme.PrimaryForegroundColor, Converter={StaticResource ColorToBrushConverter}, Mode=OneWay}"/>
+        </Border>
         <TextBlock Grid.Column="1" Height="22" MinWidth="0" Margin="2,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" x:Name="IconControl"
                    Text="{x:Bind Title, Mode=OneWay}" Foreground="{x:Bind CurrentTheme.PrimaryForegroundColor, Converter={StaticResource ColorToBrushConverter}, Mode=OneWay}"/>
-        <generic:FIconButton Grid.Column="2" MaxWidth="21" Height="21" MinWidth="0" Visibility="{x:Bind DuplicateVisible, Mode=OneWay}" x:Name="ButtonDuplicate" Padding="3" Content="{material:MaterialIconExt Kind=ContentCopy}" OnClick="ButtonDuplicate_OnOnClick"/>
-        <generic:FIconButton Grid.Column="3" MaxWidth="21" Height="21" MinWidth="0" Visibility="{x:Bind CloseVisible, Mode=OneWay}" Margin="0,0,1,0" x:Name="ButtonClose" Content="{material:MaterialIconExt Kind=Close}" OnClick="ButtonClose_OnOnClick"/>
+        <generic:FIconButton Grid.Column="2" MaxWidth="21" Height="21" MinWidth="0" Visibility="Collapsed" x:Name="ButtonAudio" Padding="3" Content="{material:MaterialIconExt Kind=VolumeHigh}" OnClick="ButtonAudio_OnOnClick" PointerEntered="ButtonAudio_OnPointerEntered"/>
+        <generic:FIconButton Grid.Column="3" MaxWidth="21" Height="21" MinWidth="0" Visibility="{x:Bind DuplicateVisible, Mode=OneWay}" x:Name="ButtonDuplicate" ToolTipText="Duplicate" Padding="3" Content="{material:MaterialIconExt Kind=ContentCopy}" OnClick="ButtonDuplicate_OnOnClick"/>
+        <generic:FIconButton Grid.Column="4" MaxWidth="21" Height="21" MinWidth="0" Visibility="{x:Bind CloseVisible, Mode=OneWay}" Margin="0,0,1,0" x:Name="ButtonClose" ToolTipText="Close" Content="{material:MaterialIconExt Kind=Close}" OnClick="ButtonClose_OnOnClick"/>
     </Grid>
 </UserControl>

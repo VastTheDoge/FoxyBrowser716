@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
@@ -45,19 +46,218 @@ public static class FoxyFileManager
 	/// <summary>
 	/// Just appdata and the app name.
 	/// </summary>
-	private static readonly string BrowserAppDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), BrowserDataFolderName);
+	private static string BrowserAppDataPath => _browserAppDataPath ??= ResolveDataFolder();
+	private static string? _browserAppDataPath;
 	/// <summary>
 	/// folder that contains all instances of the browser.
 	/// </summary>
-	private static readonly string InstanceFolderPath = Path.Combine(BrowserAppDataPath, InstanceFolderName);
+	private static string InstanceFolderPath => Path.Combine(BrowserAppDataPath, InstanceFolderName);
 	/// <summary>
 	/// all permanent data of the browser (data that shouldn't be deleted).
 	/// </summary>
-	private static readonly string BrowserDataFolderPath = Path.Combine(BrowserAppDataPath, DataFolderName);
+	private static string BrowserDataFolderPath => Path.Combine(BrowserAppDataPath, DataFolderName);
 	/// <summary>
 	/// all temporary data of the browser (data that can be deleted with little to no impact).
 	/// </summary>
-	private static readonly string CacheFolderPath = Path.Combine(BrowserAppDataPath, CacheFolderName);
+	private static string CacheFolderPath => Path.Combine(DefaultAppDataPath, CacheFolderName);
+	#endregion
+
+	#region DataFolderLocation
+	// Claude Doc
+	/// <summary>
+	/// The default root, always on this PC. It holds the pointer to a moved data folder (<c>DataFolder.json</c>) and
+	/// the parts that stay local wherever the data folder is: the browser engine's profiles (<c>WebView2</c>, whose
+	/// cookies only this PC can decrypt and which Chromium can't run reliably from a synced drive) and the caches,
+	/// including the session backup.
+	/// </summary>
+	private static readonly string DefaultAppDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), BrowserDataFolderName);
+	private static readonly string DataFolderPointerPath = Path.Combine(DefaultAppDataPath, "DataFolder.json");
+	private const string CopyingMarker = ".foxy-copying";
+	//C written in the default root when the data moves away from it, so its leftovers are known to be stale
+	private const string MovedMarker = ".foxy-moved";
+
+	private sealed record DataFolderPointer(string? Path, string? PendingPath);
+
+	private static DataFolderPointer ReadPointer()
+	{
+		try
+		{
+			if (File.Exists(DataFolderPointerPath))
+				return JsonSerializer.Deserialize<DataFolderPointer>(File.ReadAllText(DataFolderPointerPath)) ?? new(null, null);
+		}
+		catch (Exception e)
+		{
+			Debug.WriteLine(e);
+		}
+		return new(null, null);
+	}
+
+	private static void WritePointer(DataFolderPointer pointer)
+	{
+		Directory.CreateDirectory(DefaultAppDataPath);
+		File.WriteAllText(DataFolderPointerPath, JsonSerializer.Serialize(pointer));
+	}
+
+	private static string ResolveDataFolder() =>
+		ReadPointer().Path is { } path && Directory.Exists(path) ? path : DefaultAppDataPath;
+
+	private static bool InAppFolders(string path) =>
+		path.StartsWith(BrowserAppDataPath, StringComparison.OrdinalIgnoreCase)
+		|| path.StartsWith(DefaultAppDataPath, StringComparison.OrdinalIgnoreCase);
+
+	private static bool SamePath(string a, string b) =>
+		string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(a)), Path.TrimEndingDirectorySeparator(Path.GetFullPath(b)), StringComparison.OrdinalIgnoreCase);
+
+	private static bool IsInside(string path, string folder) =>
+		Path.GetFullPath(path).StartsWith(Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>Set when the chosen data folder couldn't be used at startup; shown once a window is open.</summary>
+	private static string? DataFolderWarning { get; set; }
+
+	public static string? TakeDataFolderWarning()
+	{
+		var warning = DataFolderWarning;
+		DataFolderWarning = null;
+		return warning;
+	}
+
+	// Claude Doc
+	/// <summary>
+	/// The data folder in use, or the one chosen to take over at the next start. Backs
+	/// <see cref="DataObjects.Settings.BrowserSettings.BrowserDataPath"/>, which is app-wide even though it shows in
+	/// each instance's settings. An empty value means the default folder.
+	/// </summary>
+	public static string DataFolderSetting
+	{
+		get => ReadPointer().PendingPath ?? BrowserAppDataPath;
+		set
+		{
+			var target = string.IsNullOrWhiteSpace(value) ? DefaultAppDataPath : Path.GetFullPath(value.Trim());
+			//C an unrelated folder that already has files gets a subfolder, so the browser's data isn't mixed into it
+			if (!SamePath(target, DefaultAppDataPath) && !HasBrowserData(target) && Directory.Exists(target)
+			    && Directory.EnumerateFileSystemEntries(target).Any()
+			    && !string.Equals(Path.GetFileName(Path.TrimEndingDirectorySeparator(target)), BrowserDataFolderName, StringComparison.OrdinalIgnoreCase))
+				target = Path.Combine(target, BrowserDataFolderName);
+
+			//C a folder inside the current one (or the other way round) can't be copied cleanly
+			if (IsInside(target, BrowserAppDataPath) || IsInside(BrowserAppDataPath, target)) return;
+
+			WritePointer(ReadPointer() with { PendingPath = SamePath(target, BrowserAppDataPath) ? null : target });
+		}
+	}
+
+	//C browser data = some instance has a Data folder; a half-finished copy or a left-behind default root doesn't count
+	private static bool HasBrowserData(string folder) =>
+		Directory.Exists(Path.Combine(folder, InstanceFolderName))
+		&& Directory.EnumerateDirectories(Path.Combine(folder, InstanceFolderName)).Any(i => Directory.Exists(Path.Combine(i, DataFolderName)))
+		&& !File.Exists(Path.Combine(folder, CopyingMarker))
+		&& !File.Exists(Path.Combine(folder, MovedMarker));
+
+	// Claude Doc
+	/// <summary>
+	/// Runs once at startup in the main process, before anything reads or writes browser data. Waits a while for a
+	/// moved data folder that isn't there yet (a cloud drive still starting), then switches to a folder chosen in
+	/// settings: if it already holds browser data (e.g. synced from another PC) that is used as is, otherwise this
+	/// PC's data is copied into it. Folders that may be shared are never deleted; the default root left behind is
+	/// marked stale and cleared when the data moves back to it. Returns the error if the switch failed (the current
+	/// folder then stays in use).
+	/// </summary>
+	public static async Task<Exception?> PrepareDataFolderAsync()
+	{
+		var pointer = ReadPointer();
+
+		if (pointer.Path is { } configured && !Directory.Exists(configured))
+		{
+			for (var i = 0; i < 40 && !Directory.Exists(configured); i++)
+				await Task.Delay(500);
+			_browserAppDataPath = null;
+			if (!Directory.Exists(configured))
+				DataFolderWarning = $"The data folder {configured} isn't available (is the drive or cloud sync running?). FoxyBrowser is using {DefaultAppDataPath} for now; restart once the folder is back.";
+		}
+
+		if (pointer.PendingPath is not { } target) return null;
+
+		try
+		{
+			var source = BrowserAppDataPath;
+			if (IsInside(target, source) || IsInside(source, target))
+				throw new InvalidOperationException($"Can't move the data folder from {source} to {target}: one is inside the other.");
+
+			if (!HasBrowserData(target))
+			{
+				await Task.Run(() =>
+				{
+					Directory.CreateDirectory(target);
+					if (SamePath(target, DefaultAppDataPath) && File.Exists(Path.Combine(target, MovedMarker)))
+						DeleteSyncedParts(target);
+					var copying = Path.Combine(target, CopyingMarker);
+					File.WriteAllText(copying, source);
+					CopySyncedParts(source, source, target);
+					File.Delete(copying);
+					File.Delete(Path.Combine(target, MovedMarker));
+				});
+			}
+
+			if (SamePath(source, DefaultAppDataPath))
+				File.WriteAllText(Path.Combine(source, MovedMarker), target);
+
+			WritePointer(new DataFolderPointer(SamePath(target, DefaultAppDataPath) ? null : target, null));
+			_browserAppDataPath = target;
+			return null;
+		}
+		catch (Exception e)
+		{
+			try { WritePointer(pointer with { PendingPath = null }); } catch { /* the error below is what matters */ }
+			DataFolderWarning = $"Couldn't move the data folder to {target}: {e.Message}";
+			return e;
+		}
+	}
+
+	//C what moves with the data folder: everything but the engine profiles, caches, the pointer and markers
+	private static bool IsLocalOnly(string root, string path)
+	{
+		var parts = Path.GetRelativePath(root, path).Split(Path.DirectorySeparatorChar);
+		return parts switch
+		{
+			[var name] => name.Equals(CacheFolderName, StringComparison.OrdinalIgnoreCase)
+			              || name.Equals(Path.GetFileName(DataFolderPointerPath), StringComparison.OrdinalIgnoreCase)
+			              || name.StartsWith(".foxy-", StringComparison.Ordinal),
+			[var instances, _, var name] when instances.Equals(InstanceFolderName, StringComparison.OrdinalIgnoreCase) =>
+				name.Equals(WebView2FolderName, StringComparison.OrdinalIgnoreCase) || name.Equals(CacheFolderName, StringComparison.OrdinalIgnoreCase),
+			_ => false,
+		};
+	}
+
+	private static void CopySyncedParts(string root, string source, string target)
+	{
+		Directory.CreateDirectory(target);
+		foreach (var file in Directory.GetFiles(source))
+			if (!IsLocalOnly(root, file))
+				File.Copy(file, Path.Combine(target, Path.GetFileName(file)), true);
+		foreach (var folder in Directory.GetDirectories(source))
+			if (!IsLocalOnly(root, folder))
+				CopySyncedParts(root, folder, Path.Combine(target, Path.GetFileName(folder)));
+	}
+
+	private static void DeleteSyncedParts(string root)
+	{
+		foreach (var file in Directory.GetFiles(root).Where(f => !IsLocalOnly(root, f)))
+			File.Delete(file);
+		foreach (var folder in Directory.GetDirectories(root).Where(f => !IsLocalOnly(root, f)))
+		{
+			if (Path.GetFileName(folder).Equals(InstanceFolderName, StringComparison.OrdinalIgnoreCase))
+			{
+				foreach (var instance in Directory.GetDirectories(folder))
+				foreach (var part in Directory.GetFileSystemEntries(instance).Where(p => !IsLocalOnly(root, p)))
+				{
+					if (Directory.Exists(part)) Directory.Delete(part, true);
+					else File.Delete(part);
+				}
+			}
+			else
+				Directory.Delete(folder, true);
+		}
+	}
 	#endregion
 
 	#region Enums
@@ -117,10 +317,10 @@ public static class FoxyFileManager
 			FolderType.BrowserAppData => BrowserAppDataPath,
 			FolderType.Instance => instanceName is null ? InstanceFolderPath : Path.Combine(InstanceFolderPath, instanceName),
 			FolderType.Extension => instanceName is null ? throw new ArgumentNullException(nameof(instanceName)) : Path.Combine(InstanceFolderPath, instanceName, ExtensionFolderName),
-			FolderType.WebView2 => instanceName is null ? throw new ArgumentNullException(nameof(instanceName)) : Path.Combine(InstanceFolderPath, instanceName, WebView2FolderName),
+			FolderType.WebView2 => instanceName is null ? throw new ArgumentNullException(nameof(instanceName)) : Path.Combine(DefaultAppDataPath, InstanceFolderName, instanceName, WebView2FolderName),
 			FolderType.Widgets => instanceName is null ? throw new ArgumentNullException(nameof(instanceName)) : Path.Combine(InstanceFolderPath, instanceName, DataFolderName, WidgetsFolderName),
 			FolderType.Data => instanceName is null ? BrowserDataFolderPath : Path.Combine(InstanceFolderPath, instanceName, DataFolderName),
-			FolderType.Cache => instanceName is null ? CacheFolderPath : Path.Combine(InstanceFolderPath, instanceName, CacheFolderName),
+			FolderType.Cache => instanceName is null ? CacheFolderPath : Path.Combine(DefaultAppDataPath, InstanceFolderName, instanceName, CacheFolderName),
 			_ => throw new ArgumentOutOfRangeException(nameof(folderType), folderType, null)
 		};
 	}
@@ -160,7 +360,7 @@ public static class FoxyFileManager
 			try
 			{
 				// safety check to ensure the folder path is valid and within the app's data directory
-				if (string.IsNullOrWhiteSpace(folderPath) || !folderPath.StartsWith(BrowserAppDataPath))
+				if (string.IsNullOrWhiteSpace(folderPath) || !InAppFolders(folderPath))
 					return ReturnCode.InvalidPath;
 			
 				if (Directory.Exists(folderPath))
@@ -256,7 +456,7 @@ public static class FoxyFileManager
 			try
 			{
 				// safety check to ensure the folder path is valid and within the app's data directory
-				if (string.IsNullOrWhiteSpace(folderPath) || !folderPath.StartsWith(BrowserAppDataPath))
+				if (string.IsNullOrWhiteSpace(folderPath) || !InAppFolders(folderPath))
 					return (ReturnCode.InvalidPath, null);
 
 				if (!Directory.Exists(folderPath))
@@ -319,7 +519,7 @@ public static class FoxyFileManager
 		{
 			try
 			{
-				if (string.IsNullOrWhiteSpace(filePath) || !filePath.StartsWith(BrowserAppDataPath))
+				if (string.IsNullOrWhiteSpace(filePath) || !InAppFolders(filePath))
 					return (ReturnCode.InvalidPath, null);
 
 				if (!File.Exists(filePath))
@@ -349,7 +549,7 @@ public static class FoxyFileManager
 		{
 			try
 			{
-				if (string.IsNullOrWhiteSpace(filePath) || !filePath.StartsWith(BrowserAppDataPath))
+				if (string.IsNullOrWhiteSpace(filePath) || !InAppFolders(filePath))
 					return (ReturnCode.InvalidPath, null);
 
 				if (!File.Exists(filePath))
@@ -437,7 +637,7 @@ public static class FoxyFileManager
 		{
 			try
 			{
-				if (string.IsNullOrWhiteSpace(filePath) || !filePath.StartsWith(BrowserAppDataPath))
+				if (string.IsNullOrWhiteSpace(filePath) || !InAppFolders(filePath))
 					return ReturnCode.InvalidPath;
 
 				// ensure the directory exists
@@ -469,7 +669,7 @@ public static class FoxyFileManager
 		{
 			try
 			{
-				if (string.IsNullOrWhiteSpace(filePath) || !filePath.StartsWith(BrowserAppDataPath))
+				if (string.IsNullOrWhiteSpace(filePath) || !InAppFolders(filePath))
 					return ReturnCode.InvalidPath;
 
 				var directory = Path.GetDirectoryName(filePath);
@@ -537,7 +737,7 @@ public static class FoxyFileManager
 		{
 			try
 			{
-				if (string.IsNullOrWhiteSpace(filePath) || !filePath.StartsWith(BrowserAppDataPath))
+				if (string.IsNullOrWhiteSpace(filePath) || !InAppFolders(filePath))
 					return ReturnCode.InvalidPath;
 				
 				if (!File.Exists(filePath))

@@ -315,6 +315,7 @@ public class FoxyAutoSaver : IDisposable
 
 	private int tick;
 
+	// Claude Doc
 	/// <summary>
 	/// Guards the queue bookkeeping (<see cref="_queuedItems"/>, <see cref="_runningTick"/>, the queues):
 	/// save requests arrive on the UI thread while this timer runs on a thread-pool thread.
@@ -350,7 +351,7 @@ public class FoxyAutoSaver : IDisposable
 		}
 		catch (Exception ex)
 		{
-			// this is an async void timer callback: an escaping exception would end the process
+			//C this is an async void timer callback: an escaping exception would end the process
 			ErrorHandeler.FoxyLogger.AddError(ex);
 		}
 		finally
@@ -358,8 +359,8 @@ public class FoxyAutoSaver : IDisposable
 			List<IFoxyAutoSaverItem> immediate = [];
 			lock (_queueLock)
 			{
-				// requests that came in while saving were parked; queue them now (and record them, or
-				// SaveQueue would skip them)
+				//C requests that came in while saving were parked; queue them now (and record them, or
+				//C SaveQueue would skip them)
 				while (_waitQueue.TryDequeue(out var pair))
 				{
 					if (pair.priority == SavePriority.Immediate)
@@ -396,6 +397,7 @@ public class FoxyAutoSaver : IDisposable
 		_ = SaveSafely(item);
 	}
 
+	// Claude Doc
 	/// <summary>Caller holds <see cref="_queueLock"/>.</summary>
 	private void EnqueueLocked(IFoxyAutoSaverItem item, SavePriority priority)
 	{
@@ -435,6 +437,7 @@ public class FoxyAutoSaver : IDisposable
 		await Task.WhenAll(toSave.Select(SaveSafely));
 	}
 
+	// Claude Doc
 	/// <summary>Saves one item; a failure (e.g. a locked file) is logged and only affects that item.</summary>
 	private static async Task SaveSafely(IFoxyAutoSaverItem item)
 	{

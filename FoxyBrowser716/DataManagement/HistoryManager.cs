@@ -2,6 +2,7 @@ using FoxyBrowser716.DataObjects.Complex;
 
 namespace FoxyBrowser716.DataManagement;
 
+// Claude Doc
 /// <summary>
 /// Browsing history for one instance (History.json). One entry per URL; see <see cref="HistoryEntry"/>.
 /// Recording happens from <see cref="WebviewTab"/> on the UI thread; saving happens on the auto-saver thread,
@@ -12,6 +13,7 @@ public sealed class HistoryManager
 	private readonly FoxyAutoSaverLockedList<HistoryEntry> _store;
 	private readonly Dictionary<string, HistoryEntry> _byUrl = new(StringComparer.Ordinal);
 
+	// Claude Doc
 	/// <summary>Raised after any change (on the thread that made it, normally the UI thread).</summary>
 	public event Action? Changed;
 
@@ -22,6 +24,7 @@ public sealed class HistoryManager
 		_store = new FoxyAutoSaverLockedList<HistoryEntry>("History.json", FoxyFileManager.FolderType.Data, instanceName, SavePriority.Low);
 	}
 
+	// Claude Doc
 	/// <summary>Call once the store has loaded: drops expired entries and builds the URL index.</summary>
 	internal void Initialize(int retentionDays)
 	{
@@ -35,7 +38,6 @@ public sealed class HistoryManager
 		Prune(retentionDays);
 	}
 
-	/// <summary>Only real web pages and local files go into history.</summary>
 	public static bool IsRecordable(string? url) =>
 		Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" or "file";
 
@@ -48,7 +50,7 @@ public sealed class HistoryManager
 		{
 			if (_byUrl.TryGetValue(url, out var entry))
 			{
-				// reloads and quick back/forward hops should not inflate the visit count
+				//C reloads and quick back/forward hops should not inflate the visit count
 				if (now - entry.LastVisited > TimeSpan.FromMinutes(1))
 					entry.VisitCount++;
 				entry.LastVisited = now;
@@ -73,6 +75,7 @@ public sealed class HistoryManager
 		Changed?.Invoke();
 	}
 
+	// Claude Doc
 	/// <summary>Fills in the title/icon of an entry once the page reports them (they arrive after the visit).</summary>
 	public void UpdateDetails(string url, string? title, string? favIconUrl)
 	{
@@ -86,6 +89,7 @@ public sealed class HistoryManager
 		if (changed) Changed?.Invoke();
 	}
 
+	// Claude Doc
 	/// <summary>Entries newest first, optionally filtered (every word of <paramref name="filter"/> must match the title or URL).</summary>
 	public List<HistoryEntry> GetEntries(string? filter = null)
 	{
@@ -96,6 +100,7 @@ public sealed class HistoryManager
 			.ToList());
 	}
 
+	// Claude Doc
 	/// <summary>Best matches for the address bar: favors URLs that start with the query, frequent and recent visits.</summary>
 	public List<HistoryEntry> Search(string query, int max)
 	{
@@ -133,6 +138,7 @@ public sealed class HistoryManager
 		Changed?.Invoke();
 	}
 
+	// Claude Doc
 	/// <summary>Removes entries not visited within <paramref name="retentionDays"/> days (0 or less keeps everything).</summary>
 	public void Prune(int retentionDays)
 	{

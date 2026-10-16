@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Threading;
 using FoxyBrowser716.Controls.MainWindow;
 using FoxyBrowser716.DataObjects.Complex.Ai;
@@ -7,6 +8,18 @@ namespace FoxyBrowser716.DataObjects.Complex;
 
 public sealed record AiChatEntry(AiRole Role, string Text);
 
+//C a chat as written to disk by AiHandler; History is in the provider's own format
+public sealed record AiChatSave(
+	int Id,
+	DateTime CreationTime,
+	AiModelChoice Model,
+	AiEffort Effort,
+	AiPermissionMode PermissionMode,
+	List<AiChatEntry> Transcript,
+	AiUsage Usage,
+	JsonArray History);
+
+// Claude Doc
 /// <summary>
 /// One assistant chat: what the panel shows (<see cref="Transcript"/>, <see cref="Usage"/>) plus the provider
 /// conversation it was started with. The provider is fixed per chat (its history is in that provider's format), but
@@ -16,9 +29,8 @@ public sealed record AiChatEntry(AiRole Role, string Text);
 public class AiChat
 {
 	private static int _chatCounter;
-	public int Id { get; } = Interlocked.Increment(ref _chatCounter);
+	public int Id { get; }
 
-	/// <summary>Used when the user hasn't set their own in <see cref="BrowserSettings.AiSystemPrompt"/>.</summary>
 	public const string DefaultSystemPrompt =
 		"""
 		You are the assistant built into FoxyBrowser, a web browser. You talk with the user in a narrow side panel next to their tabs.
@@ -38,31 +50,44 @@ public class AiChat
 		Only act on tabs when the user asks you to. Write in Markdown. The panel is about 450 pixels wide, so keep answers compact and avoid wide tables. If you're not sure about something, say so rather than guessing.
 		""";
 
-	public DateTime CreationTime { get; } = DateTime.Now;
+	public DateTime CreationTime { get; }
 
 	private readonly List<AiChatEntry> _transcript = [];
 	public ReadOnlyCollection<AiChatEntry> Transcript => _transcript.AsReadOnly();
 
+	// Claude Doc
 	/// <summary>Total for this chat across every response, including tool-call rounds.</summary>
 	public AiUsage Usage { get; private set; } = AiUsage.Zero;
 
-	/// <summary>What tools may do without asking, for this chat. Starts from the settings default.</summary>
 	public AiPermissionMode PermissionMode { get; set; }
 
 	private readonly MainWindow _mainWindow;
 	private readonly AiConversation _conversation;
 	private AiTurnCallbacks? _turn; // the running turn's callbacks, for approvals
 
+	// Claude Doc
 	/// <summary>The model the next turn uses. Change it with <see cref="SetModel"/> (same provider only).</summary>
 	public AiModelChoice Model { get; private set; }
 
 	public AiProviderKind Provider => Model.Provider;
 
-	/// <summary>Claude's effort for the next turn; other providers ignore it.</summary>
 	public AiEffort Effort { get; set; }
 
 	public AiChat(MainWindow mainWindow, AiModelChoice model, AiEffort effort, AiPermissionMode permissionMode)
+		: this(mainWindow, model, effort, permissionMode, null) { }
+
+	private AiChat(MainWindow mainWindow, AiModelChoice model, AiEffort effort, AiPermissionMode permissionMode, AiChatSave? save)
 	{
+		if (save is null)
+			Id = Interlocked.Increment(ref _chatCounter);
+		else
+		{
+			Id = save.Id;
+			//C new chats must not reuse a loaded chat's id (it is also its file name)
+			int seen;
+			while ((seen = _chatCounter) < Id && Interlocked.CompareExchange(ref _chatCounter, Id, seen) != seen) { }
+		}
+		CreationTime = save?.CreationTime ?? DateTime.Now;
 		_mainWindow = mainWindow;
 		Model = model;
 		Effort = effort;
@@ -71,10 +96,22 @@ public class AiChat
 		_conversation = AiConversation.Create(model.Provider, () => mainWindow.Instance.Settings, SystemPrompt(mainWindow.Instance.Settings), tools);
 	}
 
-	/// <summary>The prompt new chats start with: the user's own, or the default.</summary>
+	public static AiChat Load(MainWindow mainWindow, AiChatSave save)
+	{
+		var chat = new AiChat(mainWindow, save.Model, save.Effort, save.PermissionMode, save);
+		chat._transcript.AddRange(save.Transcript);
+		chat.Usage = save.Usage;
+		chat._conversation.ImportHistory(save.History);
+		return chat;
+	}
+
+	public AiChatSave ToSave() =>
+		new(Id, CreationTime, Model, Effort, PermissionMode, _transcript.ToList(), Usage, _conversation.ExportHistory());
+
 	public static string SystemPrompt(BrowserSettings settings) =>
 		string.IsNullOrWhiteSpace(settings.AiSystemPrompt) ? DefaultSystemPrompt : settings.AiSystemPrompt;
 
+	// Claude Doc
 	/// <summary>
 	/// What to store for <paramref name="prompt"/> as typed in the settings box: empty when it is the default (or
 	/// blank), so the stored value only ever holds a real customisation. Line endings are normalised because the
@@ -86,6 +123,7 @@ public class AiChat
 		return normalized.Length == 0 || normalized == DefaultSystemPrompt.ReplaceLineEndings("\n").Trim() ? "" : normalized;
 	}
 
+	// Claude Doc
 	/// <summary>Switches to another model of the same provider; the history carries over.</summary>
 	public void SetModel(AiModelChoice model)
 	{
@@ -93,6 +131,7 @@ public class AiChat
 		Model = model;
 	}
 
+	// Claude Doc
 	/// <summary>
 	/// Sends a message and streams the reply through <paramref name="callbacks"/>. If it throws, the turn is rolled
 	/// back (transcript and provider history), so the chat can carry on.
@@ -114,7 +153,7 @@ public class AiChat
 				},
 				ToolCall = name =>
 				{
-					// shown inline, and kept in the transcript so the chat reads the same when reopened
+					//C shown inline, and kept in the transcript so the chat reads the same when reopened
 					var note = $"{(reply.Length > 0 ? "\n\n" : "")}*Tool: `{name}`*\n\n";
 					reply.Append(note);
 					callbacks.Text?.Invoke(note);
@@ -141,7 +180,6 @@ public class AiChat
 		_transcript.Add(new AiChatEntry(AiRole.Assistant, reply.ToString()));
 	}
 
-	/// <summary>Wraps a tool so it runs only if this chat's permission mode allows it (asking the user when needed).</summary>
 	private AiTool WithPermissionCheck(AiTool tool) => tool with
 	{
 		Execute = async input =>

@@ -26,9 +26,9 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" x:Name="TitleText" Height="26" Text="Chat: Loading" VerticalAlignment="Center" HorizontalTextAlignment="Center" FontSize="20" FontWeight="700" TextTrimming="CharacterEllipsis"/>
-            <generic:FIconButton Grid.Column="1" Height="26" Width="26" x:Name="ButtonSettings" CornerRadius="5" Content="{material:MaterialIconExt Kind=Cog}" OnClick="ButtonSettings_OnClick"/>
-            <generic:FIconButton Grid.Column="2" Height="26" Width="26" x:Name="ButtonHistory" CornerRadius="5" Content="{material:MaterialIconExt Kind=History}" OnClick="ButtonHistory_OnClick"/>
-            <generic:FIconButton Grid.Column="3" Height="26" Width="26" x:Name="ButtonClose" CornerRadius="5" Content="{material:MaterialIconExt Kind=ArrowCollapseRight}" OnClick="ButtonClose_OnClick"/>
+            <generic:FIconButton Grid.Column="1" Height="26" Width="26" x:Name="ButtonSettings" ToolTipText="Assistant settings" CornerRadius="5" Content="{material:MaterialIconExt Kind=Cog}" OnClick="ButtonSettings_OnClick"/>
+            <generic:FIconButton Grid.Column="2" Height="26" Width="26" x:Name="ButtonHistory" ToolTipText="Saved chats" CornerRadius="5" Content="{material:MaterialIconExt Kind=History}" OnClick="ButtonHistory_OnClick"/>
+            <generic:FIconButton Grid.Column="3" Height="26" Width="26" x:Name="ButtonClose" ToolTipText="Close the panel" CornerRadius="5" Content="{material:MaterialIconExt Kind=ArrowCollapseRight}" OnClick="ButtonClose_OnClick"/>
         </Grid>
 
         <!-- what the next message uses: model, effort (Claude only) and permission mode -->

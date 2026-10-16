@@ -5,6 +5,7 @@ using Windows.ApplicationModel;
 using FoxyBrowser716.Controls.MainWindow;
 using FoxyBrowser716.DataObjects.Basic;
 using FoxyBrowser716.DataObjects.Complex;
+using FoxyBrowser716.DataObjects.Settings;
 using FoxyBrowser716.ErrorHandeler;
 using Microsoft.UI.Dispatching;
 
@@ -103,7 +104,7 @@ public static class AppServer
 				Console.WriteLine("----------------------------");
 #endif
 				
-				// StartupTask comes from the MSIX manifest, so unpackaged builds have no launch-on-login
+				//C StartupTask comes from the MSIX manifest, so unpackaged builds have no launch-on-login
 				if (AppEnvironment.IsPackaged)
 				{
 					var startupTask = await StartupTask.GetAsync("FoxyBrowserStartup");
@@ -192,7 +193,9 @@ public static class AppServer
 				if (uris.Length > 0)
 					await CurrentInstance.CreateWindow(uris);
 				else if (!fromStartup && !backupRestored)
-					await CurrentInstance.CreateWindow();
+					await CurrentInstance.CreateWindow(CurrentInstance.Settings.StartupMode == StartupMode.SpecificPages
+						? CurrentInstance.Settings.StartupPages.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+						: null);
 			}
 			else if (!fromStartup)
 			{

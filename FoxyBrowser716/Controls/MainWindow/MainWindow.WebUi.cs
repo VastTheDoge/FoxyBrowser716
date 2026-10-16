@@ -13,6 +13,7 @@ using WinUIEx;
 
 namespace FoxyBrowser716.Controls.MainWindow;
 
+// Claude Doc
 /// <summary>
 /// The window's side of the web content: FoxyBrowser-themed replacements for WebView2's built-in UI
 /// (page context menu, permission prompts, alert/confirm/prompt, sign-in, downloads) plus the history panel,
@@ -68,6 +69,7 @@ public sealed partial class MainWindow
 		if (_historyPanel is not null) _historyPanel.CurrentTheme = CurrentTheme;
 	}
 
+	// Claude Doc
 	/// <summary>The tab content area in <see cref="BorderGrid"/> coordinates.</summary>
 	private Rect GetTabAreaBounds()
 	{
@@ -89,7 +91,7 @@ public sealed partial class MainWindow
 	{
 		if (!Instance.Settings.ThemedContextMenu || _webContextMenu is null) return; // engine menu
 
-		// a new right-click while our menu is still open: finish the old request without a selection
+		//C a new right-click while our menu is still open: finish the old request without a selection
 		var previous = _pendingWebMenuCompletion;
 		_pendingWebMenuCompletion = null;
 		previous?.Invoke();
@@ -111,7 +113,7 @@ public sealed partial class MainWindow
 			catch (Exception e) { FoxyLogger.AddWarning("Completing the page context menu failed", e.Message); }
 		};
 
-		// Location is in raw pixels relative to the WebView; XAML layout is in DIPs
+		//C Location is in raw pixels relative to the WebView; XAML layout is in DIPs
 		var scale = tab.Core.XamlRoot?.RasterizationScale ?? 1.0;
 		var position = tab.Core.TransformToVisual(BorderGrid)
 			.TransformPoint(new Point(args.Location.X / scale, args.Location.Y / scale));
@@ -153,7 +155,7 @@ public sealed partial class MainWindow
 						continue;
 				}
 
-				// replaced by our own "Open link in new tab" above
+				//C replaced by our own "Open link in new tab" above
 				if (item.Name == "openLinkInNewWindow") continue;
 
 				var commandId = item.CommandId;
@@ -205,11 +207,11 @@ public sealed partial class MainWindow
 
 	private static MaterialIcon Icon(MaterialIconKind kind) => new() { Kind = kind };
 
+	// Claude Doc
 	/// <summary>Labels mark access keys with '&amp;' ("&amp;Back"); "&amp;&amp;" is a literal ampersand.</summary>
 	private static string CleanLabel(string label) =>
 		label.Replace("&&", "\u0001").Replace("&", string.Empty).Replace("\u0001", "&");
 
-	/// <summary>Icons for WebView2's built-in menu items (CoreWebView2ContextMenuItem.Name).</summary>
 	private static MaterialIcon? IconFor(string name)
 	{
 		MaterialIconKind? kind = name switch
@@ -249,7 +251,7 @@ public sealed partial class MainWindow
 		var origin = SitePermissionManager.GetOrigin(args.Uri);
 		var kind = args.PermissionKind;
 
-		// remembered decisions and Allow/Block defaults apply silently, themed prompts or not
+		//C remembered decisions and Allow/Block defaults apply silently, themed prompts or not
 		if (Instance.SitePermissions.Resolve(origin, kind, Instance.Settings) is { } decision)
 		{
 			args.SavesInProfile = false;
@@ -286,7 +288,7 @@ public sealed partial class MainWindow
 
 		void Decide(PermissionDecision chosen)
 		{
-			// answer the page first; remembering is a separate, optional step
+			//C answer the page first; remembering is a separate, optional step
 			Complete(chosen == PermissionDecision.Allow ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny);
 
 			switch (Instance.Settings.RememberPermissionChoices)
@@ -326,6 +328,7 @@ public sealed partial class MainWindow
 		});
 	}
 
+	// Claude Doc
 	/// <summary>Only raised while BrowserSettings.ThemedDialogs is on (default script dialogs are off then).</summary>
 	internal void OnTabScriptDialogOpening(WebviewTab tab, CoreWebView2ScriptDialogOpeningEventArgs args)
 	{
@@ -435,7 +438,7 @@ public sealed partial class MainWindow
 	#region Downloads
 	internal async void OnTabDownloadStarting(WebviewTab tab, CoreWebView2DownloadStartingEventArgs args)
 	{
-		// extension installs from the Chrome Web Store are handled by ExtensionManager
+		//C extension installs from the Chrome Web Store are handled by ExtensionManager
 		if (tab.Core.CoreWebView2.Source.Contains("chromewebstore.google.com")) return;
 		if (!Instance.Settings.ThemedDownloads) return; // engine download flyout
 
@@ -460,7 +463,7 @@ public sealed partial class MainWindow
 					return;
 				}
 
-				// the picker creates an empty placeholder; remove it so WebView2 writes to exactly this path
+				//C the picker creates an empty placeholder; remove it so WebView2 writes to exactly this path
 				var path = file.Path;
 				try { await file.DeleteAsync(); } catch { /* WebView2 overwrites it either way */ }
 				args.ResultFilePath = path;
@@ -474,7 +477,7 @@ public sealed partial class MainWindow
 		catch (Exception e)
 		{
 			FoxyLogger.AddError(e);
-			// the engine flyout is already hidden: still list the download (at its default path) so it is visible
+			//C the engine flyout is already hidden: still list the download (at its default path) so it is visible
 			if (!tracked && !args.Cancel)
 			{
 				try
@@ -487,7 +490,7 @@ public sealed partial class MainWindow
 		}
 		finally
 		{
-			// the tab may have closed while the save dialog was open; this is an async void handler
+			//C the tab may have closed while the save dialog was open; this is an async void handler
 			try { deferral.Complete(); }
 			catch (Exception e) { FoxyLogger.AddWarning("Completing the download request failed", e.Message); }
 		}
@@ -532,7 +535,7 @@ public sealed partial class MainWindow
 					TabManager.SwapActiveTabTo(TabManager.AddTab(url));
 					_historyPopup!.IsOpen = false;
 				},
-				// the engine keeps its own (unreadable) history for visited-link colors; clear it with ours
+				//C the engine keeps its own (unreadable) history for visited-link colors; clear it with ours
 				async () =>
 				{
 					if (ExtensionPopupWebview.CoreWebView2?.Profile is { } profile)

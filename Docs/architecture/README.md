@@ -8,6 +8,8 @@ Add a file when a subsystem is complex enough that the map in `CLAUDE.md` plus t
 
 - `web-ui.md` — themed replacements for WebView2's UI (context menu, prompts, downloads), site permissions,
   history, private instances, how settings reach tabs, extension management.
+- `tabs-and-session.md` — popups that keep `window.opener`, tab audio/volume, the tab and hamburger menus,
+  startup modes and session restore, the movable data folder.
 - `home-widgets.md` — home page grid, how to add a widget, sizing conventions, widget settings persistence.
 - `ai-assistant.md` — assistant panel providers (Claude, OpenAI-compatible), tool loop, usage/cost, API keys in the Credential Locker.
 - `unpackaged.md` — the no-MSIX self-contained build (`-p:FoxyUnpackaged=true`), `AppEnvironment`, packaged-only call sites.

@@ -57,6 +57,23 @@ public sealed partial class FIconButton : ContentControl
     }
     
     private void OnCurrentThemeChanged(Theme _) => ApplyTheme();
+
+    public static readonly DependencyProperty ToolTipTextProperty = DependencyProperty.Register(
+        nameof(ToolTipText), typeof(string), typeof(FIconButton),
+        new PropertyMetadata(null, (d, _) => ((FIconButton)d).ApplyToolTip()));
+
+    //C icon-only buttons say what they do on hover, in the button's theme
+    public string? ToolTipText
+    {
+        get => (string?)GetValue(ToolTipTextProperty);
+        set => SetValue(ToolTipTextProperty, value);
+    }
+
+    private void ApplyToolTip()
+    {
+        if (ToolTipText is not null || ToolTipService.GetToolTip(this) is ToolTip)
+            FToolTip.Set(this, ToolTipText, CurrentTheme);
+    }
     
     private void ApplyTheme()
     {
@@ -69,6 +86,7 @@ public sealed partial class FIconButton : ContentControl
             Background = new SolidColorBrush(Colors.Transparent);;
         }
         Foreground = new SolidColorBrush(PointerOver ? CurrentTheme.PrimaryAccentColorSlightTransparent : CurrentTheme.PrimaryForegroundColor);
+        ApplyToolTip();
     }
     
     internal bool PointerOver { get; set; }

@@ -3,20 +3,24 @@ using FoxyBrowser716.DataObjects.Settings;
 
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
+// Claude Doc
 /// <summary>What the assistant may do without asking. Default in the panel's settings; the mode button changes it per chat.</summary>
 public enum AiPermissionMode
 {
+	// Claude Doc
 	/// <summary>Reads run on their own; every action asks.</summary>
 	[Description("Read-only")] ReadOnly,
+	// Claude Doc
 	/// <summary>Everything asks, reads included.</summary>
 	Ask,
+	// Claude Doc
 	/// <summary>Nothing asks, scripts included.</summary>
 	Brave,
+	// Claude Doc
 	/// <summary>Per tool, from <see cref="BrowserSettings.AiToolPermissions"/>.</summary>
 	Custom,
 }
 
-/// <summary>One tool's choice in Custom mode.</summary>
 public enum AiToolPermission { Allow, Ask, Block }
 
 public static class AiPermissions
@@ -29,6 +33,7 @@ public static class AiPermissions
 		_ => Default(tool),
 	};
 
+	// Claude Doc
 	/// <summary>Read-only mode's choice, also the starting point for Custom.</summary>
 	public static AiToolPermission Default(AiTool tool) => tool.Kind == AiToolKind.Read ? AiToolPermission.Allow : AiToolPermission.Ask;
 

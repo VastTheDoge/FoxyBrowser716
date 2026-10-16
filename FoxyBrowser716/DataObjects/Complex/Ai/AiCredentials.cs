@@ -3,6 +3,7 @@ using FoxyBrowser716.ErrorHandeler;
 
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
+// Claude Doc
 /// <summary>
 /// AI provider API keys, kept in the Windows Credential Locker (Credential Manager → Web Credentials) rather than
 /// the settings file. One key per provider, shared by every instance.
@@ -21,11 +22,12 @@ public static class AiCredentials
 		}
 		catch (Exception)
 		{
-			// Retrieve throws (Element not found) when no key was saved yet
+			//C Retrieve throws (Element not found) when no key was saved yet
 			return null;
 		}
 	}
 
+	// Claude Doc
 	/// <summary>
 	/// The key's start, end and length, never the whole thing: enough to compare against the Console and spot a
 	/// wrong or cut-off paste. "sk-ant-api03-…x9Qk (108 characters)".
@@ -38,6 +40,7 @@ public static class AiCredentials
 			: $"{key[..13]}…{key[^4..]} ({key.Length} characters)";
 	}
 
+	// Claude Doc
 	/// <summary>Saves the key, or removes it when <paramref name="key"/> is empty.</summary>
 	public static void Set(AiProviderKind provider, string? key)
 	{
@@ -51,7 +54,6 @@ public static class AiCredentials
 			}
 			catch (Exception)
 			{
-				// nothing saved yet
 			}
 
 			if (!string.IsNullOrEmpty(key))
@@ -59,7 +61,7 @@ public static class AiCredentials
 		}
 		catch (Exception e)
 		{
-			// e.g. no Credential Locker (Wine)
+			//C e.g. no Credential Locker (Wine)
 			FoxyLogger.AddError(e);
 		}
 	}

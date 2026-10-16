@@ -32,7 +32,7 @@ public partial class CalendarWidget : WidgetBase
 
 	protected override Task Initialize()
 	{
-		// roll over to the new day (and month) if the browser is left open past midnight
+		//C roll over to the new day (and month) if the browser is left open past midnight
 		CreateLiveTimer(TimeSpan.FromMinutes(1), () =>
 		{
 			if (DateTime.Today == _lastToday) return;

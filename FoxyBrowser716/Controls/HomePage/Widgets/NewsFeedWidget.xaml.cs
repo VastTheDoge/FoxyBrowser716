@@ -10,7 +10,7 @@ using FoxyBrowser716.ErrorHandeler;
 
 namespace FoxyBrowser716.Controls.HomePage.Widgets;
 
-// RSS 2.0, RSS 1.0 (RDF) and Atom. Elements are matched by local name only, so namespaced and sloppy feeds still parse.
+//C RSS 2.0, RSS 1.0 (RDF) and Atom. Elements are matched by local name only, so namespaced and sloppy feeds still parse.
 [WidgetInfo("News Feed Widget", MaterialIconKind.Rss, WidgetCategory.WebsiteNavigation)]
 public partial class NewsFeedWidget : WidgetBase
 {
@@ -18,13 +18,13 @@ public partial class NewsFeedWidget : WidgetBase
 	private const int MaxItemsLimit = 50;
 	private const long MaxFeedBytes = 4 * 1024 * 1024;
 
-	// the settings box reports every keystroke, so a typed address is only fetched once the user pauses
+	//C the settings box reports every keystroke, so a typed address is only fetched once the user pauses
 	private static readonly TimeSpan UrlEditPause = TimeSpan.FromSeconds(1.2);
 	private static readonly TimeSpan FailedRetryDelay = TimeSpan.FromMinutes(2);
 
 	private static readonly HttpClient Http = CreateHttpClient();
 
-	// only well-known inline tags: titles like "Vec<T> in Rust" must survive
+	//C only well-known inline tags: titles like "Vec<T> in Rust" must survive
 	private static readonly Regex HtmlTag = new(@"</?(a|b|i|u|s|em|strong|span|code|small|sup|sub|br|p|div|font|img|mark|q|cite|abbr)\b[^>]*>",
 		RegexOptions.Compiled | RegexOptions.IgnoreCase);
 	private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
@@ -76,7 +76,6 @@ public partial class NewsFeedWidget : WidgetBase
 	{
 		_initialized = true;
 		StartFetch();
-		// one cheap tick drives the periodic refresh, the URL-edit pause and the "3h ago" labels
 		CreateLiveTimer(TimeSpan.FromSeconds(1), Tick);
 		ApplyTheme();
 		return Task.CompletedTask;
@@ -86,7 +85,7 @@ public partial class NewsFeedWidget : WidgetBase
 	{
 		if (!_initialized) return; // Initialize fetches whatever address was loaded
 
-		// anything in flight is for the old address
+		//C anything in flight is for the old address
 		_fetchCancel?.Cancel();
 		_fetchGeneration++;
 		_loading = false;
@@ -138,7 +137,6 @@ public partial class NewsFeedWidget : WidgetBase
 		_loading = true;
 		if (uri.AbsoluteUri != _itemsUrl)
 		{
-			// a different feed: don't leave the old one's items up while the new one loads
 			_items = [];
 			_itemsUrl = null;
 			_feedTitle = "";
@@ -169,11 +167,11 @@ public partial class NewsFeedWidget : WidgetBase
 
 	private static async Task<Feed> DownloadFeedAsync(Uri uri, CancellationToken token)
 	{
-		// buffered read: the client's Timeout and MaxResponseContentBufferSize then cover the whole body
+		//C buffered read: the client's Timeout and MaxResponseContentBufferSize then cover the whole body
 		using var response = await Http.GetAsync(uri, token).ConfigureAwait(false);
 		response.EnsureSuccessStatusCode();
 		var bytes = await response.Content.ReadAsByteArrayAsync(token).ConfigureAwait(false);
-		// a big feed takes a moment to parse; keep that off the UI thread too
+		//C a big feed takes a moment to parse; keep that off the UI thread too
 		return await Task.Run(() => ParseFeed(bytes, uri), token).ConfigureAwait(false);
 	}
 
@@ -182,7 +180,7 @@ public partial class NewsFeedWidget : WidgetBase
 		var client = new HttpClient(new SocketsHttpHandler
 		{
 			AutomaticDecompression = DecompressionMethods.All,
-			// the client lives as long as the app; recycle connections so DNS changes are noticed
+			//C the client lives as long as the app; recycle connections so DNS changes are noticed
 			PooledConnectionLifetime = TimeSpan.FromMinutes(10),
 		})
 		{
@@ -211,7 +209,7 @@ public partial class NewsFeedWidget : WidgetBase
 	{
 		if (string.IsNullOrWhiteSpace(text)) return null;
 		text = text.Trim();
-		// "feed://" and "feed:https://" are ordinary feeds announced to feed readers
+		//C "feed://" and "feed:https://" are ordinary feeds announced to feed readers
 		if (text.StartsWith("feed:", StringComparison.OrdinalIgnoreCase)) text = text[5..].TrimStart('/');
 		return NormalizeUrl(text);
 	}
@@ -222,7 +220,7 @@ public partial class NewsFeedWidget : WidgetBase
 	{
 		var settings = new XmlReaderSettings
 		{
-			// old RSS 0.91 feeds still carry a DOCTYPE: skip it instead of failing, and never resolve or expand it
+			//C old RSS 0.91 feeds still carry a DOCTYPE: skip it instead of failing, and never resolve or expand it
 			DtdProcessing = DtdProcessing.Ignore,
 			IgnoreComments = true,
 			IgnoreProcessingInstructions = true,
@@ -269,7 +267,6 @@ public partial class NewsFeedWidget : WidgetBase
 			if (items.Count >= MaxItemsLimit) break;
 		}
 
-		// name the site each story lives on, unless they all live on the same one (then it's just noise)
 		var hosts = items.Select(i => DisplayHost(i.Link)).ToList();
 		if (hosts.Where(h => h.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Skip(1).Any())
 			for (var i = 0; i < items.Count; i++)
@@ -284,7 +281,7 @@ public partial class NewsFeedWidget : WidgetBase
 	{
 		foreach (var link in Children(item, "link"))
 		{
-			// plain RSS puts the address in the text; an atom:link inside an item puts it in href
+			//C plain RSS puts the address in the text; an atom:link inside an item puts it in href
 			var rel = (string?)link.Attribute("rel");
 			if (rel is not (null or "alternate")) continue;
 			if (ToWebUri((string?)link.Attribute("href") ?? link.Value, feedUri) is { } uri) return uri;
@@ -304,10 +301,11 @@ public partial class NewsFeedWidget : WidgetBase
 			if (rel is not (null or "alternate")) continue;
 			if (ToWebUri((string?)link.Attribute("href"), feedUri) is { } uri) return uri;
 		}
-		// some feeds only give an id, which is sometimes the page's address (and otherwise a tag: URI we skip)
+		//C some feeds only give an id, which is sometimes the page's address (and otherwise a tag: URI we skip)
 		return ToWebUri(Child(entry, "id")?.Value, null);
 	}
 
+	// Claude Doc
 	/// <summary>Only http(s) links are ever opened; relative ones are resolved against the feed's address.</summary>
 	private static Uri? ToWebUri(string? text, Uri? baseUri)
 	{
@@ -333,7 +331,7 @@ public partial class NewsFeedWidget : WidgetBase
 	private static string Clean(string? text)
 	{
 		if (string.IsNullOrWhiteSpace(text)) return "";
-		// titles are often HTML-escaped twice or carry inline markup (Atom type="html")
+		//C titles are often HTML-escaped twice or carry inline markup (Atom type="html")
 		text = WebUtility.HtmlDecode(HtmlTag.Replace(text, " "));
 		return Whitespace.Replace(text, " ").Trim();
 	}
@@ -343,7 +341,7 @@ public partial class NewsFeedWidget : WidgetBase
 		if (string.IsNullOrWhiteSpace(text)) return null;
 		text = text.Trim();
 
-		// RFC 822 (RSS), e.g. "Tue, 08 Oct 2026 14:00:00 GMT": drop the weekday, turn named and +hhmm zones into +hh:mm
+		//C RFC 822 (RSS), e.g. "Tue, 08 Oct 2026 14:00:00 GMT": drop the weekday, turn named and +hhmm zones into +hh:mm
 		var rfc = text;
 		var comma = rfc.IndexOf(',');
 		if (comma is > 0 and < 10) rfc = rfc[(comma + 1)..].Trim();
@@ -354,7 +352,7 @@ public partial class NewsFeedWidget : WidgetBase
 		if (DateTimeOffset.TryParseExact(rfc, Rfc822Formats, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var parsed))
 			return parsed;
 
-		// ISO 8601 (Atom, dc:date) and anything else .NET understands; times without a zone are taken as UTC
+		//C ISO 8601 (Atom, dc:date) and anything else .NET understands; times without a zone are taken as UTC
 		return DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AllowWhiteSpaces, out parsed)
 			? parsed
 			: null;
@@ -410,7 +408,6 @@ public partial class NewsFeedWidget : WidgetBase
 			Background = new SolidColorBrush(Colors.Transparent),
 			Child = new StackPanel { Spacing = 1, Children = { title, meta } },
 		};
-		// the title may be cut to two lines, so the tooltip carries all of it
 		ToolTipService.SetToolTip(row, item.Link is null ? item.Title : $"{item.Title}\n{item.Link.AbsoluteUri}");
 		if (item.Link is not { } link) return row;
 
@@ -443,7 +440,7 @@ public partial class NewsFeedWidget : WidgetBase
 		StatusText.Text = _items.Count > 0 ? "" : waiting ? "Loading feed..." : _error ?? "This feed has no items right now";
 		StatusText.Visibility = _items.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
 
-		// after a failed refresh the last good items stay up; the icon and button tooltip say it's stale
+		//C after a failed refresh the last good items stay up; the icon and button tooltip say it's stale
 		FeedIcon.Foreground = new SolidColorBrush(_error is null ? CurrentTheme.PrimaryHighlightColor : CurrentTheme.NoColor);
 		RefreshButton.Opacity = waiting ? 0.45 : 1;
 		ToolTipService.SetToolTip(RefreshButton, _error is null ? "Refresh" : $"Refresh (last try failed: {_error})");
@@ -451,7 +448,6 @@ public partial class NewsFeedWidget : WidgetBase
 
 	private void RootGrid_OnSizeChanged(object sender, SizeChangedEventArgs e)
 	{
-		// in a sliver of height the stories matter more than the header; in a sliver of width the title does
 		var showHeader = e.NewSize.Height >= 56;
 		HeaderGrid.Visibility = showHeader ? Visibility.Visible : Visibility.Collapsed;
 		RootGrid.RowSpacing = showHeader ? 4 : 0;

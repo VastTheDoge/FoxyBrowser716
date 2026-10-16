@@ -100,6 +100,13 @@ and description by `CustomControlSettingControl`). Categories render in `Setting
 `MainWindow.OnSettingsChanged` calls `WebviewTab.ApplySettings()` on every tab for any change, so engine
 settings apply live.
 
+## Tooltips
+
+WinUI's default tooltip follows the Windows theme, not FoxyBrowser's. `FToolTip.Set(target, text, theme)` builds a
+themed `ToolTip`; `FIconButton.ToolTipText` uses it and re-themes with the button. Code that calls `FToolTip.Set`
+directly must call it again on a theme change (the assistant panel does this in `ApplyTheme`). Older
+`ToolTipService.SetToolTip(x, "string")` calls in the home widgets still show the default style.
+
 ## Extensions
 
 `ExtensionsController` (Settings > Extensions) drives `ExtensionManager`: on/off is stored as folder names in

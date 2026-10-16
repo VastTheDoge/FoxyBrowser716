@@ -1,9 +1,9 @@
 using System.Reflection;
 using System.Text.Json;
 
-// Usage: WinUiMap <nuget packages folder> <output json>
-// Writes { "Microsoft.UI.Xaml.Controls.Grid": ["Loaded", ...], ... } for every public Microsoft.UI.Xaml* type
-// in the restored WinUI and WebView2 packages, read as metadata only (nothing Windows-specific is executed).
+//C Usage: WinUiMap <nuget packages folder> <output json>
+//C Writes { "Microsoft.UI.Xaml.Controls.Grid": ["Loaded", ...], ... } for every public Microsoft.UI.Xaml* type
+//C in the restored WinUI and WebView2 packages, read as metadata only (nothing Windows-specific is executed).
 var packages = args[0];
 var output = args[1];
 
@@ -17,7 +17,7 @@ var winui = Newest(Directory.GetFiles(Path.Combine(packages, "microsoft.windowsa
 var webview = Newest(Directory.GetFiles(Path.Combine(packages, "microsoft.web.webview2"), "Microsoft.Web.WebView2.Core.Projection.dll", SearchOption.AllDirectories)
     .Where(p => p.Contains("net8.0")));
 
-// everything the two assemblies might reference, so base types (and their events) resolve
+//C everything the two assemblies might reference, so base types (and their events) resolve
 var searchRoots = new[]
 {
     "microsoft.netcore.app.ref", "microsoft.windows.sdk.net.ref", "microsoft.windows.cswinrt",
@@ -32,7 +32,7 @@ var files = searchRoots
     .GroupBy(Path.GetFileName)
     .Select(g => Newest(g)!)
     .ToList();
-// the core library must come from the reference pack
+//C the core library must come from the reference pack
 files.RemoveAll(f => Path.GetFileName(f) == "System.Runtime.dll");
 files.Add(Newest(Directory.GetFiles(Path.Combine(packages, "microsoft.netcore.app.ref"), "System.Runtime.dll", SearchOption.AllDirectories))!);
 files.Add(winui);

@@ -13,7 +13,6 @@ public partial class TabManager : ObservableObject
 {
 	[ObservableProperty] public partial Instance Instance { get; private set; }
 
-	/// <summary>The window these tabs live in; it hosts their themed web UI (menus, prompts, downloads).</summary>
 	public MainWindow Window { get; private set; } = null!;
 
 	[ObservableProperty] public partial ObservableCollection<WebviewTab> Tabs { get; set; } = [];
@@ -54,7 +53,7 @@ public partial class TabManager : ObservableObject
 				+ "--site-per-process "
 				+ "--enable-gpu-rasterization "
 				+ "--enable-features=UseSkiaRenderer,CanvasOopRasterization "
-				// Chromium's sandbox needs Windows security primitives Wine doesn't implement (and Wine is no sandbox itself)
+				//C Chromium's sandbox needs Windows security primitives Wine doesn't implement (and Wine is no sandbox itself)
 				+ (AppEnvironment.IsWine ? "--no-sandbox " : "")
 
 			/*"--enable-gpu " +
@@ -84,6 +83,7 @@ public partial class TabManager : ObservableObject
 		WebsiteEnvironment ??= await CoreWebView2Environment.CreateWithOptionsAsync(null, FoxyFileManager.BuildFolderPath(FoxyFileManager.FolderType.WebView2, Instance.Name), options);
 	}
 	
+	// Claude Doc
 	/// <summary>
 	/// Whether tabs dragged from <paramref name="source"/> may drop into <paramref name="target"/>: only within the same
 	/// instance (the tab would be re-opened in the other instance's profile).
@@ -112,7 +112,10 @@ public partial class TabManager : ObservableObject
 	public void RemoveTab(int tabId, bool keepCore) {
 		if (_tabs.Count > 1)
 		{
-			var newId = ActiveTabId == tabId ? _tabs.First(t => t.Key != tabId).Key : ActiveTabId;
+			var opener = _tabs.GetValueOrDefault(tabId)?.OpenerTabId;
+			var newId = ActiveTabId != tabId ? ActiveTabId
+				: opener is { } o && _tabs.ContainsKey(o) ? o
+				: _tabs.First(t => t.Key != tabId).Key;
 			SwapActiveTabTo(newId);
 		}
 		else
@@ -148,6 +151,35 @@ public partial class TabManager : ObservableObject
 		}
 	}
 	
+	//C window.open / target=_blank: the new tab's core becomes args.NewWindow so the page keeps window.opener
+	//C (OAuth and payment popups postMessage back to it). WebView2 navigates it once the deferral completes.
+	public async void OpenNewWindowAsTab(CoreWebView2NewWindowRequestedEventArgs args, int? openerTabId)
+	{
+		var deferral = args.GetDeferral();
+		var id = AddTab(null);
+		var tab = _tabs[id];
+		tab.Info.Url = args.Uri;
+		tab.OpenerTabId = openerTabId;
+		try
+		{
+			await tab.CoreTask;
+			args.NewWindow = tab.Core.CoreWebView2;
+		}
+		catch (Exception e)
+		{
+			//C e.g. the opener is in another profile (extension popup in a private instance): plain navigation, no opener
+			FoxyLogger.AddError(e);
+			try { tab.Core.CoreWebView2?.Navigate(args.Uri); }
+			catch (Exception e2) { FoxyLogger.AddError(e2); }
+		}
+		finally
+		{
+			args.Handled = true;
+			deferral.Complete();
+		}
+		SwapActiveTabTo(id);
+	}
+
 	public int AddTab(string? url)
 	{
 		var tab = new WebviewTab(this, url);

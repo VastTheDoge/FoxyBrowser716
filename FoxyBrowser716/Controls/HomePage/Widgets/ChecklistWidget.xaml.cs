@@ -4,7 +4,7 @@ using Material.Icons.WinUI3;
 
 namespace FoxyBrowser716.Controls.HomePage.Widgets;
 
-// The list lives in the "Items" setting as "[ ] text" / "[x] text" lines, which doubles as a bulk editor in the settings popup.
+//C The list lives in the "Items" setting as "[ ] text" / "[x] text" lines, which doubles as a bulk editor in the settings popup.
 [WidgetInfo("Checklist Widget", MaterialIconKind.FormatListChecks, WidgetCategory.Tools)]
 public partial class ChecklistWidget : WidgetBase
 {
@@ -23,12 +23,11 @@ public partial class ChecklistWidget : WidgetBase
 	protected ChecklistWidget()
 	{
 		InitializeComponent();
-		// Enter adds the item rather than starting a new line
 		AddInput.AcceptsReturn = false;
 
 		_itemsSetting = new StringSetting("Items", "One item per line: \"[ ] text\", or \"[x] text\" once it's done. You can also edit the list right on the widget.", "", v =>
 		{
-			// the widget writes this setting itself (Commit); only re-read text that came from elsewhere (a saved layout, the settings box)
+			//C the widget writes this setting itself (Commit); only re-read text that came from elsewhere (a saved layout, the settings box)
 			v ??= "";
 			if (v == _itemsText) return;
 			_itemsText = v;
@@ -54,11 +53,11 @@ public partial class ChecklistWidget : WidgetBase
 
 	private static IEnumerable<ChecklistItem> Parse(string text)
 	{
-		// a TextBox breaks lines with "\r", the saved text uses "\n": accept either (and "\r\n")
+		//C a TextBox breaks lines with "\r", the saved text uses "\n": accept either (and "\r\n")
 		foreach (var rawLine in text.Split(LineBreaks, StringSplitOptions.RemoveEmptyEntries))
 		{
 			var line = rawLine.Trim();
-			// tolerate pasted markdown ("- [ ] milk", "* eggs")
+			//C tolerate pasted markdown ("- [ ] milk", "* eggs")
 			if (line.Length > 1 && (line[0] is '-' or '*' or '+') && line[1] == ' ') line = line[2..].TrimStart();
 
 			var done = false;
@@ -66,7 +65,7 @@ public partial class ChecklistWidget : WidgetBase
 			{
 				var close = line.IndexOf(']');
 				var mark = close > 0 ? line[1..close].Trim() : null;
-				// only a real checkbox is syntax: "[WIP] fix the build" keeps its text
+				//C only a real checkbox is syntax: "[WIP] fix the build" keeps its text
 				if (mark is "" or "x" or "X" or "*")
 				{
 					done = mark != "";
@@ -81,7 +80,6 @@ public partial class ChecklistWidget : WidgetBase
 	private static string Serialize(IEnumerable<ChecklistItem> items) =>
 		string.Join("\n", items.Select(i => (i.Done ? "[x] " : "[ ] ") + i.Text));
 
-	/// <summary>Writes the list back to the Items setting and saves it (changes on the widget happen outside edit mode).</summary>
 	private void Commit()
 	{
 		_itemsText = Serialize(_items);
@@ -96,7 +94,7 @@ public partial class ChecklistWidget : WidgetBase
 
 	private void AddInput_OnEnterPressed()
 	{
-		// items are one line each; a pasted multi-line string becomes one item
+		//C items are one line each; a pasted multi-line string becomes one item
 		var text = AddInput.CurrentText.Replace('\r', ' ').Replace('\n', ' ').Trim();
 		AddInput.SetText("");
 		if (text.Length == 0) return;
@@ -104,7 +102,6 @@ public partial class ChecklistWidget : WidgetBase
 		_items.Add(new ChecklistItem(text, false));
 		RebuildRows();
 		Commit();
-		// new items go to the bottom; bring the latest into view
 		Scroller.UpdateLayout();
 		Scroller.ChangeView(null, Scroller.ScrollableHeight, null);
 	}
@@ -134,7 +131,7 @@ public partial class ChecklistWidget : WidgetBase
 		};
 		ApplyItemState(check, text, item.Done);
 
-		// checkbox and text share one hit area so clicking the words toggles too; the delete button sits outside it
+		//C checkbox and text share one hit area so clicking the words toggles too; the delete button sits outside it
 		var toggleArea = new Grid
 		{
 			ColumnSpacing = 6, Background = new SolidColorBrush(Colors.Transparent),
@@ -171,7 +168,7 @@ public partial class ChecklistWidget : WidgetBase
 		var layout = new Grid
 		{
 			ColumnSpacing = 2,
-			// the delete button's slot is reserved so the text doesn't re-wrap when it appears on hover
+			//C the delete button's slot is reserved so the text doesn't re-wrap when it appears on hover
 			ColumnDefinitions =
 			{
 				new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
@@ -225,8 +222,8 @@ public partial class ChecklistWidget : WidgetBase
 		var height = RootGrid.ActualHeight;
 		if (width <= 0 || height <= 0) return;
 
-		// as the widget gets shorter the add box goes first, then the list, and the header stays longest;
-		// an empty list keeps the add box instead, since that's the only useful thing to show
+		//C as the widget gets shorter the add box goes first, then the list, and the header stays longest;
+		//C an empty list keeps the add box instead, since that's the only useful thing to show
 		var hasItems = _items.Count > 0;
 		var showList = hasItems && height >= 60;
 		var showInput = height >= (hasItems ? 96 : 60);

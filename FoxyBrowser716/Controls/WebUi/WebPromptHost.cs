@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 
 namespace FoxyBrowser716.Controls.WebUi;
 
+// Claude Doc
 /// <summary>
 /// Shows site prompts (<see cref="WebPromptSpec"/>) for one window. Prompts are queued per tab and only the
 /// active tab's oldest prompt is visible, so a background tab's alert waits until you switch to it (the page
@@ -29,6 +30,7 @@ public sealed class WebPromptHost
 		}
 	} = DefaultThemes.DarkMode;
 
+	// Claude Doc
 	/// <param name="host">Panel the popup is added to (popup offsets are relative to it).</param>
 	/// <param name="getBounds">Area to center prompts in, in <paramref name="host"/> coordinates (the tab content area).</param>
 	public WebPromptHost(Panel host, Func<Rect> getBounds)
@@ -59,6 +61,7 @@ public sealed class WebPromptHost
 		Refresh();
 	}
 
+	// Claude Doc
 	/// <summary>Queues a prompt ahead of the tab's others (a follow-up to the prompt just answered).</summary>
 	public void EnqueueNext(int tabId, WebPromptSpec spec)
 	{
@@ -68,7 +71,6 @@ public sealed class WebPromptHost
 		Refresh();
 	}
 
-	/// <summary>Cancels every prompt of a tab that is closing.</summary>
 	public void CancelTab(int tabId)
 	{
 		if (!_queues.Remove(tabId, out var queue)) return;
@@ -83,7 +85,6 @@ public sealed class WebPromptHost
 			CancelTab(tabId);
 	}
 
-	/// <summary>Re-centers the visible prompt (call when the window or tab area resizes).</summary>
 	public void Reposition()
 	{
 		if (!_popup.IsOpen || _shownCard is null) return;
@@ -136,7 +137,7 @@ public sealed class WebPromptHost
 
 	private static void SafeCancel(WebPromptSpec spec)
 	{
-		// the WebView may already be closed, which makes completing its deferral throw
+		//C the WebView may already be closed, which makes completing its deferral throw
 		try { spec.Cancelled(); }
 		catch (Exception e) { FoxyLogger.AddWarning("Cancelling a site prompt failed", e.Message); }
 	}

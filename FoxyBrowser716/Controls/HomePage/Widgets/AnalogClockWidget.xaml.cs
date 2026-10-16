@@ -62,7 +62,7 @@ public partial class AnalogClockWidget : WidgetBase
 		for (var hour = 1; hour <= 12; hour++)
 		{
 			var angle = hour * 30 * Math.PI / 180;
-			// fixed-size, centered box so every number sits exactly on the ring regardless of its glyph width
+			//C fixed-size, centered box so every number sits exactly on the ring regardless of its glyph width
 			var number = new TextBlock
 			{
 				Text = hour.ToString(), FontSize = 16, Width = 24, Height = 22,

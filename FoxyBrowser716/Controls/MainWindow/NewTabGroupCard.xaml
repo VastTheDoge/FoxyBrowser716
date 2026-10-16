@@ -82,7 +82,7 @@
                       Drop="TabsList_Drop">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="complex:WebviewTab">
-                        <mainWindow:NewTabCard Title="{x:Bind Info.Title, Mode=OneWay}"
+                        <mainWindow:NewTabCard Tab="{x:Bind}" Title="{x:Bind Info.Title, Mode=OneWay}"
                                                ForceHighlight="{x:Bind IsActive, Mode=OneWay}"
                                                Icon="{x:Bind Info.FavIconUrl, Converter={StaticResource UrlToImageControlConverter}, Mode=OneWay}"
                                                CurrentTheme="{x:Bind TabManager.Instance.CurrentTheme, Mode=OneWay}" 

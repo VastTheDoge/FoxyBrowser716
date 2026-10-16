@@ -6,6 +6,7 @@ using FoxyBrowser716.DataObjects.Settings;
 
 namespace FoxyBrowser716.DataObjects.Complex.Ai;
 
+// Claude Doc
 /// <summary>
 /// Any server that speaks OpenAI's <c>/chat/completions</c> (OpenAI, OpenRouter, Mistral, Groq, Ollama, LM Studio...),
 /// over plain HTTP + SSE so server-specific SDK quirks don't matter. Usage is reported as tokens only: prices
@@ -25,7 +26,22 @@ internal sealed class OpenAiCompatibleConversation : AiConversation
 
 	public override AiProviderKind Kind => AiProviderKind.OpenAiCompatible;
 
-	/// <summary>The server's address plus <paramref name="path"/>, or a message saying to set it.</summary>
+	public override JsonArray ExportHistory()
+	{
+		var history = new JsonArray(_messages.Select(m => (JsonNode)m.DeepClone()).ToArray());
+		StripImages(history);
+		return history;
+	}
+
+	//C replaces the system message too: a saved chat keeps the prompt it was started with
+	public override void ImportHistory(JsonArray history)
+	{
+		var messages = history.OfType<JsonObject>().Select(m => (JsonObject)m.DeepClone()).ToList();
+		if (messages.Count == 0) return;
+		_messages.Clear();
+		_messages.AddRange(messages);
+	}
+
 	private static Uri Endpoint(BrowserSettings settings, string path)
 	{
 		var baseUrl = settings.OpenAiBaseUrl?.Trim().TrimEnd('/');
@@ -157,7 +173,7 @@ internal sealed class OpenAiCompatibleConversation : AiConversation
 			}
 		}
 
-		// a reply cut off by the length limit may hold half a tool call; running it would only confuse things
+		//C a reply cut off by the length limit may hold half a tool call; running it would only confuse things
 		if (finishReason == "length")
 		{
 			calls.Clear();
@@ -194,6 +210,7 @@ internal sealed class OpenAiCompatibleConversation : AiConversation
 		return request;
 	}
 
+	// Claude Doc
 	/// <summary>The server's models (<c>GET /models</c>) as (id, id): these servers have no display names.</summary>
 	public static async Task<List<(string Id, string Name)>> ListModelsAsync(BrowserSettings settings, CancellationToken cancellationToken = default)
 	{
@@ -215,7 +232,6 @@ internal sealed class OpenAiCompatibleConversation : AiConversation
 			.ToList();
 	}
 
-	/// <summary>Checks the base URL and key by listing models. Returns a short status for the settings view.</summary>
 	public static async Task<string> TestAsync(BrowserSettings settings, CancellationToken cancellationToken = default)
 	{
 		try
@@ -229,7 +245,6 @@ internal sealed class OpenAiCompatibleConversation : AiConversation
 		}
 	}
 
-	/// <summary>See <see cref="AiConversation.CompleteAsync"/>.</summary>
 	internal static async Task<(string Text, AiUsage Usage)> CompleteAsync(BrowserSettings settings, string model, string system, string prompt, CancellationToken cancellationToken)
 	{
 		using var request = Request(HttpMethod.Post, Endpoint(settings, "/chat/completions"), AiCredentials.Get(AiProviderKind.OpenAiCompatible), new JsonObject
@@ -282,7 +297,6 @@ internal sealed class OpenAiCompatibleConversation : AiConversation
 		}
 	}
 
-	/// <summary>Pulls <c>error.message</c> out of an OpenAI-style error body, or returns the start of the raw body.</summary>
 	private static string ErrorMessage(string body)
 	{
 		try
@@ -292,7 +306,6 @@ internal sealed class OpenAiCompatibleConversation : AiConversation
 		}
 		catch (JsonException)
 		{
-			// not JSON
 		}
 		return body.Length > 500 ? body[..500] + "..." : body;
 	}

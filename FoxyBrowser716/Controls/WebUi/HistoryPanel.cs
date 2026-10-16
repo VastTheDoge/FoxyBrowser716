@@ -8,6 +8,7 @@ using Microsoft.UI.Dispatching;
 
 namespace FoxyBrowser716.Controls.WebUi;
 
+// Claude Doc
 /// <summary>Browsable, searchable history for one instance, grouped by day (newest first).</summary>
 public sealed partial class HistoryPanel : ThemedUserControl
 {
@@ -27,6 +28,7 @@ public sealed partial class HistoryPanel : ThemedUserControl
 	private readonly List<TextBlock> _dayHeaders = [];
 	private int _shownCount = PageSize;
 
+	// Claude Doc
 	/// <param name="openUrl">Opens a history entry (the window opens it in a new tab).</param>
 	/// <param name="clearEngineHistory">Also clears WebView2's own history (visited-link colors) on "Clear history".</param>
 	public HistoryPanel(HistoryManager history, Action<string> openUrl, Func<Task>? clearEngineHistory = null)
@@ -111,7 +113,7 @@ public sealed partial class HistoryPanel : ThemedUserControl
 		_card = WebUiStyle.Card(layout, 8);
 		Content = _card;
 
-		// history changes while you browse in other tabs; batch those into one rebuild
+		//C history changes while you browse in other tabs; batch those into one rebuild
 		_refreshTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
 		_refreshTimer.Interval = TimeSpan.FromMilliseconds(400);
 		_refreshTimer.IsRepeating = false;
@@ -132,7 +134,6 @@ public sealed partial class HistoryPanel : ThemedUserControl
 		ApplyTheme();
 	}
 
-	/// <summary>Pre-fills the search box (used by "Search history for ..." in the address bar suggestions).</summary>
 	public void SetQuery(string query)
 	{
 		_search.SetText(query);
@@ -142,7 +143,7 @@ public sealed partial class HistoryPanel : ThemedUserControl
 
 	private void HistoryOnChanged()
 	{
-		// Changed can be raised from any thread that records history
+		//C Changed can be raised from any thread that records history
 		DispatcherQueue.TryEnqueue(() =>
 		{
 			_refreshTimer.Stop();
@@ -208,7 +209,6 @@ public sealed partial class HistoryPanel : ThemedUserControl
 	}
 }
 
-/// <summary>One history entry: favicon, title, URL, time and a remove button. Clicking opens it.</summary>
 public sealed partial class HistoryRow : ThemedUserControl
 {
 	private readonly Grid _root;
@@ -238,7 +238,7 @@ public sealed partial class HistoryRow : ThemedUserControl
 		_time = WebUiStyle.Text(entry.LastVisited.ToShortTimeString(), 11, wrap: false);
 		_time.Margin = new Thickness(6, 0, 2, 0);
 
-		_remove = WebUiStyle.IconButton(MaterialIconKind.Close, remove, 22, 3);
+		_remove = WebUiStyle.IconButton(MaterialIconKind.Close, remove, 22, 3, "Remove from history");
 
 		_root = new Grid
 		{

@@ -26,6 +26,7 @@ public partial class App : Application
             "FoxyBrowser716-Prod";
 #endif
 
+    // Claude Doc
     /// <summary>
     /// Set by an unpackaged <see cref="RequestRestartAfterClose"/> to the old process id, so the new process can
     /// wait for it to exit (and not restart again if startup fails a second time).
@@ -92,13 +93,18 @@ public partial class App : Application
             }
             catch (Exception ex) when (!AppEnvironment.IsPackaged)
             {
-                // AppLifecycle may not work unpackaged (e.g. under Wine): run without single-instance redirection
+                //C AppLifecycle may not work unpackaged (e.g. under Wine): run without single-instance redirection
                 FoxyLogger.AddError(ex);
                 currentInstance = null;
             }
 
+            //C only the main process may move the data folder, and only before anything has loaded from it
+            var dataFolderError = await FoxyFileManager.PrepareDataFolderAsync();
+
             FoxyLogger.LoadLog();
-            
+            if (dataFolderError is not null)
+                FoxyLogger.AddError(dataFolderError);
+
             this.UnhandledException += OnUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += CurrentDomainOnUnhandledException;
             AppDomain.CurrentDomain.FirstChanceException += CurrentDomainOnFirstChanceException;
@@ -196,7 +202,7 @@ public partial class App : Application
                 if (args.Data is ILaunchActivatedEventArgs launchArgs)
                 {
                     var arguments = SplitArguments(launchArgs.Arguments);
-                    // unpackaged launches pass the whole command line, exe path included
+                    //C unpackaged launches pass the whole command line, exe path included
                     if (arguments.Length > 0 && IsOwnExecutable(arguments[0]))
                         arguments = arguments[1..];
                     await AppServer.HandleLaunchEvent(arguments, isFirst);
@@ -229,6 +235,7 @@ public partial class App : Application
         }
     }
 
+    // Claude Doc
     /// <summary>
     /// Splits a command line on whitespace, keeping quoted parts (paths with spaces) together.
     /// </summary>
@@ -262,6 +269,7 @@ public partial class App : Application
         !arg.Contains("://")
         && string.Equals(Path.GetFileName(arg), Path.GetFileName(Environment.ProcessPath), StringComparison.OrdinalIgnoreCase);
 
+    // Claude Doc
     /// <summary>
     /// After an unpackaged restart, waits for the old process to exit so this one becomes the main instance
     /// instead of redirecting to the dying one.
@@ -272,7 +280,7 @@ public partial class App : Application
             return;
 
         _isRestart = true;
-        // keep the marker out of WebView2's child processes
+        //C keep the marker out of WebView2's child processes
         Environment.SetEnvironmentVariable(RestartedFromEnvVar, null);
 
         try
@@ -305,8 +313,8 @@ public partial class App : Application
             }
             else
             {
-                // no powershell (or shell:AppsFolder) under Wine: relaunch the exe directly.
-                // if startup already failed once after a restart, another restart would just loop.
+                //C no powershell (or shell:AppsFolder) under Wine: relaunch the exe directly.
+                //C if startup already failed once after a restart, another restart would just loop.
                 if (_isRestart || Environment.ProcessPath is not { } exePath)
                 {
                     FoxyLogger.AddCritical("Startup failed after a restart, exiting instead of restarting again.");

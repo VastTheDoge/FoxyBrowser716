@@ -11,12 +11,12 @@ namespace FoxyBrowser716.Controls.HomePage.Widgets;
 public partial class WeatherWidget : WidgetBase
 {
 	private const int ForecastDays = 3;
-	// the timer only checks; a fetch happens once the data is this old (or the last attempt failed)
+	//C the timer only checks; a fetch happens once the data is this old (or the last attempt failed)
 	private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(5);
 	private static readonly TimeSpan MaxDataAge = TimeSpan.FromMinutes(29);
 	private static readonly string[] QualifierFields = ["country", "country_code", "admin1", "admin2"];
 
-	// Open-Meteo needs no API key; HttpClient is meant to be shared, so one per widget type
+	//C Open-Meteo needs no API key; HttpClient is meant to be shared, so one per widget type
 	private static readonly HttpClient Http = CreateHttpClient();
 
 	private sealed record Place(string Name, double Latitude, double Longitude);
@@ -55,7 +55,7 @@ public partial class WeatherWidget : WidgetBase
 	protected override Task Initialize()
 	{
 		_initialized = true;
-		// ticks on every Loaded too, which makes the first fetch; fresh data isn't refetched when the page comes back
+		//C ticks on every Loaded too, which makes the first fetch; fresh data isn't refetched when the page comes back
 		CreateLiveTimer(CheckInterval, OnTimerTick);
 		ApplyTheme();
 		return Task.CompletedTask;
@@ -106,7 +106,7 @@ public partial class WeatherWidget : WidgetBase
 
 	private void OnLocationChanged(bool debounce)
 	{
-		// callbacks also fire while saved settings load, before Initialize; the first fetch waits for Loaded
+		//C callbacks also fire while saved settings load, before Initialize; the first fetch waits for Loaded
 		if (!_initialized) return;
 		_ = RefreshAsync(debounce);
 	}
@@ -129,7 +129,7 @@ public partial class WeatherWidget : WidgetBase
 		_error = null;
 		if (key != _dataKey)
 		{
-			// never show one city's weather under another city's settings, even briefly
+			//C never show one city's weather under another city's settings, even briefly
 			_data = null;
 			_dataKey = null;
 			_refreshFailed = false;
@@ -148,7 +148,7 @@ public partial class WeatherWidget : WidgetBase
 		string? error = null;
 		try
 		{
-			// the City box reports every keystroke; let typing settle before calling the API
+			//C the City box reports every keystroke; let typing settle before calling the API
 			if (debounce) await Task.Delay(TimeSpan.FromMilliseconds(700), cts.Token);
 			data = await FetchAsync(city, fahrenheit, cts.Token);
 			if (data is null) error = $"Couldn't find \"{city}\"";
@@ -184,7 +184,7 @@ public partial class WeatherWidget : WidgetBase
 		var place = await GeocodeAsync(query, token).ConfigureAwait(false);
 		if (place is null) return null;
 
-		// coordinates must use '.' whatever the user's culture is
+		//C coordinates must use '.' whatever the user's culture is
 		var url = FormattableString.Invariant(
 			$"https://api.open-meteo.com/v1/forecast?latitude={place.Latitude}&longitude={place.Longitude}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days={ForecastDays + 1}");
 		if (fahrenheit) url += "&temperature_unit=fahrenheit&wind_speed_unit=mph";
@@ -216,7 +216,7 @@ public partial class WeatherWidget : WidgetBase
 
 	private static async Task<Place?> GeocodeAsync(string query, CancellationToken token)
 	{
-		// the API only matches place names, so "Paris, France" searches "Paris" and uses "France" to pick a result
+		//C the API only matches place names, so "Paris, France" searches "Paris" and uses "France" to pick a result
 		var comma = query.IndexOf(',');
 		var name = comma > 0 ? query[..comma].Trim() : query;
 		var qualifier = comma > 0 ? query[(comma + 1)..].Trim() : "";
@@ -266,10 +266,11 @@ public partial class WeatherWidget : WidgetBase
 	private static JsonElement ArrayProperty(JsonElement obj, string name) =>
 		obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array ? value : default;
 
-	// daily arrays can contain nulls, and a missing array comes through as default (Undefined)
+	//C daily arrays can contain nulls, and a missing array comes through as default (Undefined)
 	private static double? NumberAt(JsonElement array, int index) =>
 		array.ValueKind == JsonValueKind.Array && index < array.GetArrayLength() && array[index].ValueKind == JsonValueKind.Number ? array[index].GetDouble() : null;
 
+	// Claude Doc
 	/// <summary>Short condition text and icon for a WMO weather code (what Open-Meteo reports).</summary>
 	private static (string text, MaterialIconKind icon) Describe(int? code, bool isDay) => code switch
 	{
@@ -341,7 +342,7 @@ public partial class WeatherWidget : WidgetBase
 
 		for (var i = 0; i < ForecastDays; i++)
 		{
-			// Days[0] is today (shown above), so the forecast row starts with tomorrow
+			//C Days[0] is today (shown above), so the forecast row starts with tomorrow
 			var day = i + 1 < data.Days.Count ? data.Days[i + 1] : null;
 			_dayNames[i].Text = day?.Date.ToString("ddd", CultureInfo.CurrentCulture) ?? "--";
 			_dayIcons[i].Kind = Describe(day?.Code, isDay: true).icon;

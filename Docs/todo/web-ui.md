@@ -25,8 +25,7 @@ Architecture: `Docs/architecture/web-ui.md`.
 ## Follow-ups
 
 - [ ] Context menu shows no keyboard-shortcut hints (`ShortcutKeyDescription`); `FTextButton` has no slot for them.
-- [ ] Tooltips on icon-only buttons (downloads/history rows) would need a themed tooltip style first.
+- [x] Tooltips on icon-only buttons (downloads/history rows) would need a themed tooltip style first.
 - [ ] History is one JSON file rewritten on change (low priority, every ~25 s). Fine for months of browsing;
       move to SQLite if it grows past a few MB.
-- [ ] "Load unpacked" copies the folder; edits to the source need another "Load unpacked" (Chrome loads in place).
-- [ ] `BrowserDataPath` setting is still not wired to anything.
+- [x] `BrowserDataPath` setting is still not wired to anything.

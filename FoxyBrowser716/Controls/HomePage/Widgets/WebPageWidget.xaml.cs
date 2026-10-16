@@ -9,7 +9,7 @@ public partial class WebPageWidget : WidgetBase
 {
 	private const string MobileUserAgent =
 		"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36";
-	// below this the toolbar would eat most of the widget, so it hides itself
+	//C below this the toolbar would eat most of the widget, so it hides itself
 	private const double ToolbarMinHeight = 110;
 
 	private WebView2? _web;
@@ -50,7 +50,7 @@ public partial class WebPageWidget : WidgetBase
 
 	protected override Task Initialize()
 	{
-		// the home page is only hidden (not unloaded) when a tab is shown, so Unloaded means the widget was removed
+		//C the home page is only hidden (not unloaded) when a tab is shown, so Unloaded means the widget was removed
 		Loaded += async (_, _) => await EnsureWebView();
 		Unloaded += (_, _) => CloseWebView();
 		CreateLiveTimer(TimeSpan.FromMinutes(1), AutoRefresh);
@@ -74,7 +74,7 @@ public partial class WebPageWidget : WidgetBase
 
 		try
 		{
-			// same profile as the window's tabs (so sites are signed in), and off-the-record in a private instance
+			//C same profile as the window's tabs (so sites are signed in), and off-the-record in a private instance
 			if (TabManager.Instance.IsPrivate)
 			{
 				var options = environment.CreateCoreWebView2ControllerOptions();
@@ -119,7 +119,7 @@ public partial class WebPageWidget : WidgetBase
 
 	private void Core_OnNavigationStarting(CoreWebView2 sender, CoreWebView2NavigationStartingEventArgs args)
 	{
-		// programmatic navigations (our URL, reload, auto refresh) aren't user initiated, so they stay in the widget
+		//C programmatic navigations (our URL, reload, auto refresh) aren't user initiated, so they stay in the widget
 		if (!_linksInNewTab || !args.IsUserInitiated) return;
 		args.Cancel = true;
 		OpenInNewTab(args.Uri);
@@ -149,7 +149,7 @@ public partial class WebPageWidget : WidgetBase
 		if (_web?.CoreWebView2 is not { } core) return;
 		try
 		{
-			// CSS zoom rather than the controller's zoom factor, which the WinUI control doesn't expose
+			//C CSS zoom rather than the controller's zoom factor, which the WinUI control doesn't expose
 			var factor = (_zoom / 100).ToString(CultureInfo.InvariantCulture);
 			await core.ExecuteScriptAsync($"document.documentElement.style.zoom = '{factor}'");
 		}

@@ -8,24 +8,25 @@ using FoxyBrowser716.DataObjects.Complex;
 using FoxyBrowser716.DataObjects.Complex.Ai;
 using FoxyBrowser716.DataObjects.Settings;
 using Material.Icons.WinUI3;
+using System.Threading;
 using Microsoft.UI.Xaml.Documents;
 
 namespace FoxyBrowser716.Controls.MainWindow;
 
 public sealed partial class AiChatWindow : UserControl
 {
-    /// <summary>Where Claude API credits are bought and the balance is shown; a normal API key can't read it.</summary>
     private const string BillingUrl = "https://platform.claude.com/settings/billing";
 
-    /// <summary>What the middle of the panel shows.</summary>
     private enum PanelView { Chat, History, Settings, Models }
 
     private AiHandler _aiHandler = null!;
     private MainWindow _mainWindow = null!;
     private TabGroupNamer _groupNamer = null!;
     private bool _busy;
+    private CancellationTokenSource? _turnCancel;
     private PanelView _view = PanelView.Chat;
     private FContextMenu _menu = null!;
+    // Claude Doc
     /// <summary>Permission mode picked before the first message of a new chat; null = the settings default.</summary>
     private AiPermissionMode? _nextChatMode;
 
@@ -37,7 +38,7 @@ public sealed partial class AiChatWindow : UserControl
         Input.Multiline = true;
         Input.SubmitOnEnter = true;
         ApplyTheme();
-        // the budget or defaults may have changed while the panel was closed
+        //C the budget or defaults may have changed while the panel was closed
         RegisterPropertyChangedCallback(VisibilityProperty, (_, _) =>
         {
             if (Visibility == Visibility.Visible && _aiHandler is not null)
@@ -62,7 +63,7 @@ public sealed partial class AiChatWindow : UserControl
 
         try
         {
-            await AiBudget.EnsureLoaded();
+            await Task.WhenAll(AiBudget.EnsureLoaded(), _aiHandler.LoadSaved());
         }
         catch (Exception e)
         {
@@ -114,10 +115,15 @@ public sealed partial class AiChatWindow : UserControl
         if (_menu is not null) _menu.CurrentTheme = CurrentTheme;
         foreach (var child in MessageList.Children)
             if (child is ThemedUserControl themed) themed.CurrentTheme = CurrentTheme;
+        //C rebuilds the themed tooltips
+        if (_aiHandler is not null)
+        {
+            UpdateToolbar();
+            UpdateUsage();
+        }
     }
 
     #region Views
-    /// <summary>Shows a chat's messages (or an empty new chat) with the input box.</summary>
     private void ShowChat(AiChat? chat, string? note = null)
     {
         _view = PanelView.Chat;
@@ -137,7 +143,6 @@ public sealed partial class AiChatWindow : UserControl
         ScrollToEnd();
     }
 
-    /// <summary>Puts <paramref name="content"/> in the middle of the panel instead of the chat, without the input box.</summary>
     private void ShowPanel(PanelView view, string title, UIElement content)
     {
         _view = view;
@@ -167,7 +172,7 @@ public sealed partial class AiChatWindow : UserControl
     private void ShowHistory()
     {
         var list = new StackPanel();
-        foreach (var chat in _aiHandler.Chats.Values.OrderBy(c => c.CreationTime))
+        foreach (var chat in _aiHandler.Chats.Values.OrderByDescending(c => c.CreationTime))
             list.Children.Add(HistoryCard(chat, list));
         if (list.Children.Count == 0)
             list.Children.Add(new TextBlock
@@ -184,7 +189,10 @@ public sealed partial class AiChatWindow : UserControl
     {
         var visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         Input.Visibility = visibility;
-        ButtonSend.Visibility = visibility;
+        //C while a reply runs the send button stays as the stop button
+        ButtonSend.Visibility = visible || _busy ? Visibility.Visible : Visibility.Collapsed;
+        ButtonSend.Content = new MaterialIcon { Kind = _busy ? MaterialIconKind.Stop : MaterialIconKind.Send };
+        ButtonSend.ToolTipText = _busy ? "Stop the reply" : "Send";
     }
 
     private void ScrollToEnd()
@@ -193,7 +201,6 @@ public sealed partial class AiChatWindow : UserControl
         Scroller.ChangeView(null, Scroller.ScrollableHeight, null);
     }
 
-    /// <summary>Header buttons toggle their view: a second click goes back to the open chat.</summary>
     private void Toggle(PanelView view, Action show)
     {
         if (_busy) return;
@@ -288,17 +295,18 @@ public sealed partial class AiChatWindow : UserControl
     {
         var model = CurrentModel;
         ButtonModel.ButtonText = AiModels.DisplayName(model);
-        ToolTipService.SetToolTip(ButtonModel, $"{model.Model} ({(model.Provider == AiProviderKind.Claude ? "Claude" : "OpenAI-compatible")}). Click to change the model.");
+        FToolTip.Set(ButtonModel, $"{model.Model} ({(model.Provider == AiProviderKind.Claude ? "Claude" : "OpenAI-compatible")}). Click to change the model.", CurrentTheme);
 
         ButtonEffort.Visibility = model.Provider == AiProviderKind.Claude ? Visibility.Visible : Visibility.Collapsed;
         ButtonEffort.ButtonText = EffortName(CurrentEffort);
-        ToolTipService.SetToolTip(ButtonEffort, "Effort: how much Claude thinks before answering. Higher can answer hard questions better but is slower and costs more.");
+        FToolTip.Set(ButtonEffort, "Effort: how much Claude thinks before answering. Higher can answer hard questions better but is slower and costs more.", CurrentTheme);
 
         var mode = CurrentMode;
         ButtonMode.Content = new MaterialIcon { Kind = AiPermissions.Icon(mode) };
-        ToolTipService.SetToolTip(ButtonMode, $"Permissions for this chat: {AiPermissions.Name(mode)}\n{AiPermissions.Explain(mode)}");
+        ButtonMode.ToolTipText = $"Permissions for this chat: {AiPermissions.Name(mode)}\n{AiPermissions.Explain(mode)}";
     }
 
+    // Claude Doc
     /// <summary>
     /// Picking a model sets it for the open chat and as the default for new ones. A chat can't change provider (its
     /// history is in that provider's format), so a model from the other provider starts a new chat.
@@ -309,12 +317,14 @@ public sealed partial class AiChatWindow : UserControl
         var chat = _aiHandler.ActiveChat;
 
         if (chat is not null && chat.Provider == choice.Provider)
+        {
             chat.SetModel(choice);
+            _aiHandler.Save(chat);
+        }
         else if (chat is not null && chat.Transcript.Count == 0)
             _aiHandler.DeleteChat(chat.Id); // nothing said yet: the next message starts a chat with the new model
         else if (chat is not null)
         {
-            // the old chat stays in History
             ShowChat(_aiHandler.NewChat(choice, chat.PermissionMode),
                 "New chat: a chat can't switch between Claude and OpenAI-compatible models. The previous one is in History.");
             return;
@@ -330,7 +340,11 @@ public sealed partial class AiChatWindow : UserControl
             new FContextMenu.MenuItem(new MaterialIcon { Kind = MaterialIconKind.Brain }, 1, EffortName(effort), () =>
             {
                 Settings.AiEffort = effort;
-                if (_aiHandler.ActiveChat is { } chat) chat.Effort = effort;
+                if (_aiHandler.ActiveChat is { } chat)
+                {
+                    chat.Effort = effort;
+                    _aiHandler.Save(chat);
+                }
                 UpdateToolbar();
             })
             {
@@ -339,6 +353,7 @@ public sealed partial class AiChatWindow : UserControl
         OpenMenuAt(ButtonEffort);
     }
 
+    // Claude Doc
     /// <summary>Picks what the assistant may do without asking, for this chat (mid-reply too, from the next tool call).</summary>
     private void ButtonMode_OnClick(object sender, RoutedEventArgs e)
     {
@@ -346,7 +361,11 @@ public sealed partial class AiChatWindow : UserControl
         _menu.SetItems(Enum.GetValues<AiPermissionMode>().Select(mode =>
             new FContextMenu.MenuItem(new MaterialIcon { Kind = AiPermissions.Icon(mode) }, 1, AiPermissions.Name(mode), () =>
             {
-                if (_aiHandler.ActiveChat is { } chat) chat.PermissionMode = mode;
+                if (_aiHandler.ActiveChat is { } chat)
+                {
+                    chat.PermissionMode = mode;
+                    _aiHandler.Save(chat);
+                }
                 else _nextChatMode = mode;
                 UpdateToolbar();
             })
@@ -364,7 +383,6 @@ public sealed partial class AiChatWindow : UserControl
     #endregion
 
     #region Usage
-    /// <summary>What the open chat has used, and the month's estimated Claude spend against the budget; hover for the breakdown.</summary>
     private void UpdateUsage()
     {
         if (_aiHandler is null) return;
@@ -384,7 +402,7 @@ public sealed partial class AiChatWindow : UserControl
         }
 
         UsageText.Text = string.Join(" · ", parts);
-        ToolTipService.SetToolTip(UsageText, UsageToolTip(usage, claude));
+        FToolTip.Set(UsageText, UsageToolTip(usage, claude), CurrentTheme);
         BillingText.Visibility = claude ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -441,8 +459,7 @@ public sealed partial class AiChatWindow : UserControl
     }
 
     #region Approval
-    /// <summary>Shows an Allow / Deny card for a tool call and waits for the user's answer.</summary>
-    private Task<bool> ShowApprovalCard(AiApprovalRequest request)
+    private Task<bool> ShowApprovalCard(AiApprovalRequest request, CancellationToken cancellationToken)
     {
         var decision = new TaskCompletionSource<bool>();
         var (bubble, _) = GetMessageBubble(AiRole.Assistant, $"**Allow?** {request.Description}");
@@ -465,6 +482,7 @@ public sealed partial class AiChatWindow : UserControl
 
         MessageList.Children.Add(new StackPanel { Children = { bubble, buttons } });
         ScrollToEnd();
+        cancellationToken.Register(() => Decide(false));
         return decision.Task;
 
         void Decide(bool allowed)
@@ -485,14 +503,15 @@ public sealed partial class AiChatWindow : UserControl
 
     private void ButtonSend_OnClick(object sender, RoutedEventArgs e)
     {
-        Input_OnEnterPressed();
+        if (_busy) _turnCancel?.Cancel();
+        else Input_OnEnterPressed();
     }
 
     private async void Input_OnEnterPressed()
     {
         if (_busy || _view != PanelView.Chat) return;
 
-        // CurrentText, not Text: FTextInput.Text isn't updated while typing
+        //C CurrentText, not Text: FTextInput.Text isn't updated while typing
         var input = Input.CurrentText.Trim();
         if (input.Length == 0) return;
         Input.SetText("");
@@ -508,32 +527,44 @@ public sealed partial class AiChatWindow : UserControl
         ScrollToEnd();
 
         _busy = true;
+        using var cancel = _turnCancel = new CancellationTokenSource();
         SetInputVisible(false);
         try
         {
-            // stays on the UI thread: the providers' awaits resume here, so callbacks and tools can touch the UI
+            //C stays on the UI thread: the providers' awaits resume here, so callbacks and tools can touch the UI
             await chat.UserRequest(input, new AiTurnCallbacks
             {
-                Text = text => aiText.Text += text,
+                Text = text => StreamText(aiText, text),
                 Usage = _ => UpdateUsage(),
                 Approve = async request =>
                 {
-                    var allowed = await ShowApprovalCard(request);
-                    // the rest of the reply goes below the card
+                    FlushStream();
+                    var allowed = await ShowApprovalCard(request, cancel.Token);
                     if (aiText.Text.Length == 0) MessageList.Children.Remove(aiBubble);
                     (aiBubble, aiText) = GetMessageBubble(AiRole.Assistant, "");
                     MessageList.Children.Add(aiBubble);
                     ScrollToEnd();
                     return allowed;
                 },
-            });
+            }, cancel.Token);
+            FlushStream();
             if (aiText.Text.Length == 0) MessageList.Children.Remove(aiBubble);
+            _aiHandler.Save(chat);
+        }
+        catch (Exception) when (cancel.IsCancellationRequested)
+        {
+            //C the turn was rolled back like any failed one; tool actions already done stay done
+            FlushStream();
+            Input.SetText(input);
+            aiText.Text += (aiText.Text.Length > 0 ? "\n\n" : "") + "*(Stopped. The message is back in the box if you want to send it again.)*";
+            aiBubble.Background = new SolidColorBrush(CurrentTheme.NoColor);
         }
         catch (Exception e)
         {
+            FlushStream();
             if (e is not AiNotConfiguredException) FoxyLogger.AddError(e);
 
-            // the turn was rolled back, so hand the message back for a retry
+            //C the turn was rolled back, so hand the message back for a retry
             Input.SetText(input);
             aiText.Text = e is AiNotConfiguredException ? e.Message : $"**Error:** {e.Message}";
             aiBubble.Background = new SolidColorBrush(CurrentTheme.NoColor);
@@ -543,11 +574,41 @@ public sealed partial class AiChatWindow : UserControl
         finally
         {
             _busy = false;
+            _turnCancel = null;
             SetInputVisible(true);
             UpdateUsage();
             ScrollToEnd();
         }
     }
+
+    #region Streaming
+    //C MarkdownTextBlock re-parses its whole text on every change, so streamed text is applied in batches
+    private readonly StringBuilder _streamBuffer = new();
+    private MarkdownTextBlock? _streamTarget;
+    private DispatcherTimer? _streamTimer;
+
+    private void StreamText(MarkdownTextBlock target, string text)
+    {
+        if (_streamTarget != target) FlushStream();
+        _streamTarget = target;
+        _streamBuffer.Append(text);
+        if (_streamTimer is null)
+        {
+            _streamTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+            _streamTimer.Tick += (_, _) => FlushStream();
+        }
+        if (!_streamTimer.IsEnabled) _streamTimer.Start();
+    }
+
+    private void FlushStream()
+    {
+        _streamTimer?.Stop();
+        if (_streamTarget is { } target && _streamBuffer.Length > 0)
+            target.Text += _streamBuffer.ToString();
+        _streamBuffer.Clear();
+        _streamTarget = null;
+    }
+    #endregion
 
     private FTextButton OpenSettingsButton()
     {

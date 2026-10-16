@@ -2,7 +2,6 @@ using Material.Icons.WinUI3;
 
 namespace FoxyBrowser716.Controls.Generic;
 
-/// <summary>A themed check box built on <see cref="FTextButton"/> (checked = highlighted, with a check icon).</summary>
 public sealed partial class FCheckBox : UserControl
 {
 	private readonly FTextButton _button;

@@ -4,13 +4,13 @@ using Windows.System;
 
 namespace FoxyBrowser716.Controls.Generic;
 
+// Claude Doc
 /// <summary>
 /// A themed drop-down list: a box showing the chosen option that opens the full list underneath.
 /// The box keeps its width whatever the options say (long names are trimmed), and a long list scrolls.
 /// </summary>
 public sealed partial class FDropdown : UserControl
 {
-    /// <summary>Raised with the new <see cref="SelectedIndex"/> when the user picks an option.</summary>
     public event Action<int>? SelectionChanged;
 
     private readonly Border _box;
@@ -37,6 +37,7 @@ public sealed partial class FDropdown : UserControl
         }
     } = [];
 
+    // Claude Doc
     /// <summary>The chosen option, or -1 for none. Setting it does not raise <see cref="SelectionChanged"/>.</summary>
     public int SelectedIndex
     {
@@ -49,7 +50,6 @@ public sealed partial class FDropdown : UserControl
         }
     } = -1;
 
-    /// <summary>Shown in the box when nothing is chosen.</summary>
     public string PlaceholderText { get; set { field = value; UpdateLabel(); } } = string.Empty;
 
     public FDropdown()
@@ -114,7 +114,6 @@ public sealed partial class FDropdown : UserControl
             Child = _listScroller,
         };
 
-        // the presenter's own chrome is dropped so the list draws like the other themed menus
         var presenterStyle = new Style(typeof(FlyoutPresenter));
         presenterStyle.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Colors.Transparent)));
         presenterStyle.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
@@ -139,8 +138,8 @@ public sealed partial class FDropdown : UserControl
 
         _box.PointerEntered += (_, _) => { _pointerOver = true; UpdateBoxColors(); };
         _box.PointerExited += (_, _) => { _pointerOver = false; UpdateBoxColors(); };
-        // on press rather than release: a click on the box while the list is open only closes it (light dismiss),
-        // where a release would land after the close and open it straight back up
+        //C on press rather than release: a click on the box while the list is open only closes it (light dismiss),
+        //C where a release would land after the close and open it straight back up
         _box.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(_box).Properties.IsLeftButtonPressed) return;
@@ -174,7 +173,6 @@ public sealed partial class FDropdown : UserControl
     {
         if (Options.Count == 0 || _flyout.IsOpen) return;
 
-        // at least as wide as the box, so the list reads as belonging to it
         _listBorder.MinWidth = ActualWidth;
         UpdateBoxColors(open: true);
         _flyout.ShowAt(_box);

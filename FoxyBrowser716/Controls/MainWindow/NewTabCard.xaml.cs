@@ -162,13 +162,25 @@ public sealed partial class NewTabCard : UserControl
 			},
 			FlyoutPresenterStyle = ((Flyout)Root.ContextFlyout).FlyoutPresenterStyle,
 		};
+		if (FindLeftBar() is { } leftBar)
+		{
+			flyout.Opened += (_, _) => leftBar.HoldOpen();
+			flyout.Closed += (_, _) => leftBar.ReleaseOpenHold();
+		}
 		flyout.ShowAt(ButtonAudio, new FlyoutShowOptions
 		{
 			ShowMode = FlyoutShowMode.TransientWithDismissOnPointerMoveAway,
 			Placement = FlyoutPlacementMode.Right,
 		});
 	}
-	
+
+	private NewLeftBar? FindLeftBar()
+	{
+		for (var el = VisualTreeHelper.GetParent(this); el is not null; el = VisualTreeHelper.GetParent(el))
+			if (el is NewLeftBar bar) return bar;
+		return null;
+	}
+
 	private void ButtonClose_OnOnClick(object sender, RoutedEventArgs e)
 	{
 		CloseRequested?.Invoke(this);

@@ -22,6 +22,12 @@
     <Product>FoxyBrowser716</Product>
     <AssemblyVersion>0.7.1.0</AssemblyVersion>
     <AssemblyName>FoxyBrowser716</AssemblyName>
+    <!--
+      Program.cs replaces the generated Main and runs the deployment initializer itself, after checking for package
+      identity: the auto-initializer runs before Main and crashes an MSIX build started by path (no identity).
+    -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <WindowsAppSdkDeploymentManagerInitialize>false</WindowsAppSdkDeploymentManagerInitialize>
   </PropertyGroup>
 
   <!--
@@ -33,6 +39,7 @@
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
+    <DefineConstants>$(DefineConstants);FOXY_UNPACKAGED</DefineConstants>
   </PropertyGroup>
   <ItemGroup Condition="'$(FoxyUnpackaged)' == 'true'">
     <!-- MainWindow loads the window icon from disk; MSIX builds get it through the package layout instead -->

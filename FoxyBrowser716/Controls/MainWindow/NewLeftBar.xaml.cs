@@ -156,11 +156,24 @@ public sealed partial class NewLeftBar : UserControl
         
         Task.Delay(175).ContinueWith(_ =>
         {
-            if (!MouseOver && SideOpen)
+            if (!MouseOver && SideOpen && _openHolds == 0)
                 AppServer.UiDispatcherQueue.TryEnqueue(CloseSideBar);
         });
     }
-    
+
+    private int _openHolds;
+
+    // Claude Doc
+    /// <summary>Keeps the sidebar open while a popup owned by it is shown (popups sit outside Root, so hovering them fires PointerExited). Pair every call with <see cref="ReleaseOpenHold"/>; UI thread only.</summary>
+    internal void HoldOpen() => _openHolds++;
+
+    internal void ReleaseOpenHold()
+    {
+        if (_openHolds > 0) _openHolds--;
+        if (_openHolds == 0 && !MouseOver && SideOpen && !LockSideBar)
+            CloseSideBar();
+    }
+
     public void SetLockedState(bool locked)
     {
         LockSideBar = locked;

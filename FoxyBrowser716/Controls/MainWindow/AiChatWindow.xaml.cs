@@ -10,6 +10,9 @@ using FoxyBrowser716.DataObjects.Settings;
 using Material.Icons.WinUI3;
 using System.Threading;
 using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Input;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.UI.Core;
 
 namespace FoxyBrowser716.Controls.MainWindow;
 
@@ -58,8 +61,8 @@ public sealed partial class AiChatWindow : UserControl
         _groupNamer = new TabGroupNamer(mainWindow);
 
         _menu = new FContextMenu { UseSolidBackground = true, CurrentTheme = CurrentTheme };
-        Grid.SetRowSpan(_menu, 5);
         Root.Children.Add(_menu);
+        SetWidth(Settings.AiPanelWidth, save: false);
 
         try
         {
@@ -106,7 +109,9 @@ public sealed partial class AiChatWindow : UserControl
         ButtonSend.CurrentTheme = CurrentTheme;
         ButtonSettings.CurrentTheme = CurrentTheme;
         ButtonHistory.CurrentTheme = CurrentTheme;
-        ButtonClose.CurrentTheme = CurrentTheme with
+        ButtonCollapse.CurrentTheme = CurrentTheme;
+        ButtonExpand.CurrentTheme = CurrentTheme;
+        ButtonClose.CurrentTheme = ButtonSliverClose.CurrentTheme = CurrentTheme with
         {
             SecondaryForegroundColor = CurrentTheme.NoColor,
             PrimaryHighlightColor = CurrentTheme.NoColor
@@ -458,6 +463,103 @@ public sealed partial class AiChatWindow : UserControl
         CloseRequested?.Invoke();
     }
 
+    // Claude Doc
+    /// <summary>Shows the panel at its full width, even if it was shrunk to the strip when it was closed.</summary>
+    public void Open()
+    {
+        if (_collapsed) SetWidth(Settings.AiPanelWidth, save: false);
+        Visibility = Visibility.Visible;
+    }
+
+    #region Size
+    public const double SliverWidth = 30;
+    private const double MinPanelWidth = 280, MinPageWidth = 300, CollapseBelow = 150;
+
+    private bool _collapsed, _dragging;
+    private double _dragStartX, _dragStartWidth;
+    private readonly InputCursor _arrowCursor = InputCursor.CreateFromCoreCursor(new(CoreCursorType.Arrow, 0));
+    private readonly InputCursor _resizeCursor = InputCursor.CreateFromCoreCursor(new(CoreCursorType.SizeWestEast, 0));
+
+    // Claude Doc
+    /// <summary>Raised with the panel's new width whenever it changes, shrinking to the strip included.</summary>
+    public event Action<double>? WidthChanged;
+
+    // Claude Doc
+    /// <summary>How wide the panel is right now: its set width, or the strip when shrunk.</summary>
+    public double PanelWidth => _collapsed ? SliverWidth : Root.Width;
+
+    private void SetWidth(double width, bool save)
+    {
+        //C before the first layout ActualWidth is 0, so the window can't bound the panel yet
+        var max = ActualWidth > MinPanelWidth + MinPageWidth ? ActualWidth - MinPageWidth : double.PositiveInfinity;
+        width = Math.Clamp(width, MinPanelWidth, max);
+        _collapsed = false;
+        Root.Width = width;
+        Panel.Visibility = Visibility.Visible;
+        Sliver.Visibility = Visibility.Collapsed;
+        if (save) Settings.AiPanelWidth = width;
+        WidthChanged?.Invoke(width);
+    }
+
+    private void Collapse()
+    {
+        _collapsed = true;
+        Root.Width = SliverWidth;
+        Panel.Visibility = Visibility.Collapsed;
+        Sliver.Visibility = Visibility.Visible;
+        WidthChanged?.Invoke(SliverWidth);
+    }
+
+    private void ButtonCollapse_OnClick(object sender, RoutedEventArgs e) => Collapse();
+
+    private void ButtonExpand_OnClick(object sender, RoutedEventArgs e) => SetWidth(Settings.AiPanelWidth, save: false);
+
+    private void ResizeGrip_OnPointerEntered(object sender, PointerRoutedEventArgs e) => ProtectedCursor = _resizeCursor;
+
+    private void ResizeGrip_OnPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging) ProtectedCursor = _arrowCursor;
+    }
+
+    private void ResizeGrip_OnPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(ResizeGrip).Properties.IsLeftButtonPressed) return;
+        _dragging = ResizeGrip.CapturePointer(e.Pointer);
+        _dragStartX = e.GetCurrentPoint(this).Position.X;
+        _dragStartWidth = PanelWidth;
+        e.Handled = true;
+    }
+
+    private void ResizeGrip_OnPointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging) return;
+        var width = _dragStartWidth + _dragStartX - e.GetCurrentPoint(this).Position.X;
+        if (width < CollapseBelow)
+        {
+            if (!_collapsed) Collapse();
+        }
+        else SetWidth(width, save: false);
+        e.Handled = true;
+    }
+
+    private void ResizeGrip_OnPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging) return;
+        ResizeGrip.ReleasePointerCapture(e.Pointer);
+        EndDrag();
+    }
+
+    private void ResizeGrip_OnPointerCaptureLost(object sender, PointerRoutedEventArgs e) => EndDrag();
+
+    private void EndDrag()
+    {
+        if (!_dragging) return;
+        _dragging = false;
+        ProtectedCursor = _arrowCursor;
+        if (!_collapsed) Settings.AiPanelWidth = Root.Width;
+    }
+    #endregion
+
     #region Approval
     private Task<bool> ShowApprovalCard(AiApprovalRequest request, CancellationToken cancellationToken)
     {
@@ -696,7 +798,7 @@ public sealed partial class AiChatWindow : UserControl
             _mainWindow.TabManager.SwapActiveTabTo(_mainWindow.TabManager.AddTab(e.Link));
         };
 
-        return (new Border
+        var bubble = new Border
         {
             VerticalAlignment = VerticalAlignment.Top,
             HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -708,7 +810,22 @@ public sealed partial class AiChatWindow : UserControl
             Background = role == AiRole.User ?
                 new SolidColorBrush(CurrentTheme.SecondaryHighlightColor)
                 : new SolidColorBrush(CurrentTheme.PrimaryBackgroundColor),
-        }, textBlock);
+        };
+        //C the Markdown control renders each paragraph as its own text block, so a drag can't select a whole message
+        bubble.RightTapped += (_, e) =>
+        {
+            _menu.SetItems([new FContextMenu.MenuItem(new MaterialIcon { Kind = MaterialIconKind.ContentCopy }, 1, "Copy message", () => CopyText(textBlock.Text))]);
+            _menu.PlaceWithin(e.GetPosition(Root), new Rect(0, 0, Root.ActualWidth, Root.ActualHeight));
+            e.Handled = true;
+        };
+        return (bubble, textBlock);
+    }
+
+    private static void CopyText(string text)
+    {
+        var package = new DataPackage();
+        package.SetText(text);
+        Clipboard.SetContent(package);
     }
 
     private void ButtonNewChat_OnClick(object sender, RoutedEventArgs e)

@@ -96,9 +96,18 @@ same way (`SetupExtensionSupport` runs on every tab). Open questions: `Docs/todo
 `BrowserSettings` properties with `[SettingInfo]` become editors via reflection (`GetSettingControls`): bool,
 int (with `MinValue`/`MaxValue`), decimal, string (folder/file picker when `PickerEnabled`), enum (every
 member becomes an option), Color, and `ThemedUserControl` fields for custom sections (shown with their title
-and description by `CustomControlSettingControl`). Categories render in `SettingsCategory` order.
-`MainWindow.OnSettingsChanged` calls `WebviewTab.ApplySettings()` on every tab for any change, so engine
-settings apply live.
+and description by `CustomControlSettingControl`). Categories render in `SettingsCategory` order; a
+`Subheading` on consecutive settings puts one small heading before the first of them (the site-permission
+defaults use it). `MainWindow.OnSettingsChanged` calls `WebviewTab.ApplySettings()` on every tab for any
+change, so engine settings apply live.
+
+`SettingsPage` draws a nav column (one button per category with an icon; the category whose header is in view
+is highlighted, and a click keeps the clicked one highlighted while the scroll animates) and a card per
+category with separators between rows. Typing in the search box replaces the nav buttons with the top matches
+from `SettingsSearch` (every word must hit the name, description or category; name hits weigh most; prefix,
+substring and one-or-two-typo matches count), each with its category's icon; clicking one scrolls to the row
+and flashes it. The right-hand list is never filtered. Themes are picked in the Appearance section, see
+`theming.md`.
 
 ## Tooltips
 

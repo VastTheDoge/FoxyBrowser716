@@ -93,7 +93,7 @@ public class AiChat
 		Effort = effort;
 		PermissionMode = permissionMode;
 		var tools = BrowserTools.Create(mainWindow).Select(WithPermissionCheck).ToList();
-		_conversation = AiConversation.Create(model.Provider, () => mainWindow.Instance.Settings, SystemPrompt(mainWindow.Instance.Settings), tools);
+		_conversation = AiConversation.Create(model.Provider, () => mainWindow.Instance.Settings, FullSystemPrompt(mainWindow.Instance.Settings), tools);
 	}
 
 	public static AiChat Load(MainWindow mainWindow, AiChatSave save)
@@ -108,8 +108,20 @@ public class AiChat
 	public AiChatSave ToSave() =>
 		new(Id, CreationTime, Model, Effort, PermissionMode, _transcript.ToList(), Usage, _conversation.ExportHistory());
 
+	// Claude Doc
+	/// <summary>The editable part of the prompt, as the settings box shows it: without the user's preferences.</summary>
 	public static string SystemPrompt(BrowserSettings settings) =>
 		string.IsNullOrWhiteSpace(settings.AiSystemPrompt) ? DefaultSystemPrompt : settings.AiSystemPrompt;
+
+	// Claude Doc
+	/// <summary>What a new chat is started with: the system prompt, then the user's preferences when they wrote any.</summary>
+	public static string FullSystemPrompt(BrowserSettings settings)
+	{
+		var preferences = settings.AiPreferences.ReplaceLineEndings("\n").Trim();
+		return preferences.Length == 0
+			? SystemPrompt(settings)
+			: $"{SystemPrompt(settings).TrimEnd()}\n\nThe user has written these preferences for how you should work with them. Follow them unless they conflict with the rules above:\n<user_preferences>\n{preferences}\n</user_preferences>";
+	}
 
 	// Claude Doc
 	/// <summary>

@@ -12,4 +12,5 @@ settled belong in the relevant `Docs/architecture/*.md`, not here.
 - `linux-proton.md` — run the unpackaged build under Wine/Proton (untested): setup steps + checklist.
 - `browser-features.md` — gaps vs other browsers (popup opener bug, tab audio, site info, tab sleeping, import,
   shortcuts last); design rules for pins vs bookmarks and extensions over built-ins.
+- `theming.md` — check the theme gallery/editor, color picker and reworked settings page in the running app.
 - `tab-dragging.md` — **wait for the user's go-ahead**; drag bugs, torn-off window bounds/snap, live WebView2 move, Chrome-style tear-out.

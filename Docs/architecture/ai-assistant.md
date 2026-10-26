@@ -49,22 +49,34 @@ AiChatWindow ──► AiHandler (per window: chats, active chat; saved to <inst
 
 ## Panel layout
 
-Header: title, gear (settings view), history, close. Toolbar: model button (opens the picker), effort
+Header: title, gear (settings view), history, shrink, close. Toolbar: model button (opens the picker), effort
 (Claude only), permission mode. A usage line (chat tokens · ≈cost · month ≈spent of budget; tooltip has the
 breakdown) and a "Credits" link (Console billing). The middle shows the chat, History, settings or the model
 picker; header buttons toggle back to the chat. Input: multi-line `FTextInput` with `SubmitOnEnter` (Enter sends,
 Shift+Enter / Ctrl+Enter add a line), grows to 160px then scrolls.
+
+The panel's left edge is a drag grip: the width is saved per instance (`BrowserSettings.AiPanelWidth`, 280px
+minimum, leaves the page at least 300px). Dragging it nearly shut, or the header's shrink button, shrinks the panel
+to a 30px strip (expand + close buttons; a running reply keeps streaming) without closing it; the menu entry always
+opens it at full width. `WidthChanged` tells `MainWindow` how much room to leave the page.
+
+Right-click on a message bubble gives "Copy message" (its Markdown source). The Markdown control renders each
+paragraph as its own text block, so a drag can only select within one paragraph.
 
 ## Settings
 
 - **Settings page:** only `AiEnabled` (per instance). Off hides the ☰ → AI Assistant entry and closes the panel.
 - **Panel settings view** (`AiSettingsView`, built from the normal `*SettingControl`s, which stack when narrow):
   Claude key (+ Test), monthly budget and reset day, this period's spend (+ Clear), OpenAI-compatible base URL
-  and key (+ Test), default permission mode, per-tool custom permissions (`AiToolPermissionsController`),
-  tab-group naming on/off and the quick model.
+  and key (+ Test), default permission mode, per-tool custom permissions (`AiToolPermissionsController`), save
+  chats, preferences, system prompt, tab-group naming on/off and the quick model.
+- **Preferences** (`AiPreferences`): free text about the user and how they like answers. `AiChat.FullSystemPrompt`
+  appends it to the system prompt inside a `<user_preferences>` block for chats started afterwards; the system
+  prompt box shows only the prompt itself (`AiChat.SystemPrompt`).
 - Per-instance values without `[SettingInfo]` in `BrowserSettings` (so they don't show on the settings page):
   `AiModel` (`AiModelChoice(Provider, Model)`, the default for new chats; the model picker sets it), `AiEffort`,
-  `OpenAiBaseUrl`, `AiPermissionMode`, `AiToolPermissions`, `AiNameTabGroups`, `AiQuickModel`.
+  `OpenAiBaseUrl`, `AiPermissionMode`, `AiToolPermissions`, `AiNameTabGroups`, `AiQuickModel`, `AiSystemPrompt`,
+  `AiPreferences`, `AiPanelWidth`.
 - **Model lists** (`AiModels`): Claude's Models API and the server's `GET /models`, cached for the session and
   keyed by key/server; refresh button in the picker. Anything unlisted can be typed in as a model id.
 

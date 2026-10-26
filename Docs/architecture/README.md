@@ -12,4 +12,6 @@ Add a file when a subsystem is complex enough that the map in `CLAUDE.md` plus t
   startup modes and session restore, the movable data folder.
 - `home-widgets.md` — home page grid, how to add a widget, sizing conventions, widget settings persistence.
 - `ai-assistant.md` — assistant panel providers (Claude, OpenAI-compatible), tool loop, usage/cost, API keys in the Credential Locker.
+- `theming.md` — themes and their ids, the global custom-theme store (`.foxytheme` files), the Appearance
+  gallery/editor, the mini-window preview, the color picker.
 - `unpackaged.md` — the no-MSIX self-contained build (`-p:FoxyUnpackaged=true`), `AppEnvironment`, packaged-only call sites.

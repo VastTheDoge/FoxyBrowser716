@@ -86,6 +86,11 @@ public sealed partial class AiSettingsView : ThemedUserControl
 		Add(new BoolSettingControl(new BoolSetting("Save chats",
 			"Keep chats after FoxyBrowser closes so you can pick them up again from History. Off by default in a private instance. Turning it off stops saving new replies; chats already saved stay until you delete them.",
 			settings.AiSaveChatsEffective, on => settings.AiSaveChats = on)));
+		Add(new StringSettingControl(new StringSetting("Preferences",
+			"What the assistant should know about you and how you like answers: language, tone, length, what to call you. Sent along with the system prompt to chats started afterwards.",
+			settings.AiPreferences,
+			preferences => settings.AiPreferences = preferences.ReplaceLineEndings("\n").Trim(),
+			multiline: true)));
 		Add(new StringSettingControl(new StringSetting("System prompt",
 			"The instructions every new chat starts with. Changes apply to chats started afterwards; leave it empty to use the default.",
 			AiChat.SystemPrompt(settings),

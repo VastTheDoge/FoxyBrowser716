@@ -22,8 +22,11 @@ public class SettingInfoAttribute : Attribute
     public string? Description { get; init; } // null = "" as description
     public required SettingsCategory Category { get; init; } // not null
 
+    // Claude Doc
+    /// <summary>Groups consecutive settings of a category under a small heading; the heading is shown once, before the first of them.</summary>
+    public string? Subheading { get; init; }
+
     // extra for specific controls
-    public /*Func<MainWindow, string[]>?*/ string? Options { get; init; }
     public bool PickerEnabled { get; init; } = false;
     public FoxyFileManager.ItemType ItemType { get; init; }
     public bool AllowWebsiteUris { get; init; } = false;
@@ -39,6 +42,7 @@ public class SettingInfoAttribute : Attribute
 public enum SettingsCategory
 {
     General,
+    Appearance,
     Privacy,
     Permissions,
     Downloads,
@@ -66,6 +70,7 @@ public sealed partial class BrowserSettings : ObservableObject
     public Dictionary<SettingsCategory, List<ISetting>> GetSettingControls(MainWindow mainWindow)
     {
         var controls = new Dictionary<SettingsCategory, List<ISetting>>();
+        var lastSubheading = new Dictionary<SettingsCategory, string>();
         var type = typeof(BrowserSettings);
         //var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
         var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
@@ -83,6 +88,12 @@ public sealed partial class BrowserSettings : ObservableObject
 
             var name = attribute.Name ?? field.Name;
             var description = attribute.Description ?? "";
+
+            if (attribute.Subheading is { } subheading && lastSubheading.GetValueOrDefault(attribute.Category) != subheading)
+            {
+                catControls.Add(new SubheadingSetting(subheading));
+                lastSubheading[attribute.Category] = subheading;
+            }
 
                 switch (field.GetValue(this))
                 {
@@ -116,16 +127,6 @@ public sealed partial class BrowserSettings : ObservableObject
                     case string s:
                         if (attribute.Secret)
                             catControls.Add(new SecretSetting(name, description, s, s1 => field.SetValue(this, s1)));
-                        else if (attribute.Options is { } comboOptions)
-                        {
-                            //TODO: clean up and test.
-                            var i = 0;
-                            var comboFunc = type.GetMethod(comboOptions, BindingFlags.NonPublic | BindingFlags.Static);
-                            var options = (comboFunc.Invoke(this, [mainWindow]) as string[]).Select(o => (o, i++))
-                                .ToArray();
-                            catControls.Add(new ComboSetting(name, description,
-                                options.FirstOrDefault(o => o.o == s).Item2, s => field.SetValue(this, options[s].o), options));
-                        }
                         else if (attribute.PickerEnabled)
                         {
                             if (attribute.ItemType == FoxyFileManager.ItemType.Folder)
@@ -203,13 +204,8 @@ public sealed partial class BrowserSettings : ObservableObject
         }
     }
 
-    //TODO: enum support would be nice here:
-    // dictionary map of enum to human readable.
-    // detect enum, grab all values as options.
-    // [SettingInfo(Category = SettingsCategory.General, Options = ["0", "1", "2", "3"])]
-    // public string TestCombo = "1";
-
-    [SettingInfo(Category = SettingsCategory.General, Name = "Theme", Description = "Colors used across the browser UI, including menus, prompts and the downloads panel.", Options = nameof(GetComboOptions))]
+    // Claude Doc
+    /// <summary>Id of the theme in use (<see cref="ThemeManager.Entry.Id"/>): a built-in's name, or a custom theme's file name. Picked in the Appearance section.</summary>
     public string ThemeName { get; set => SetProperty(ref field, value); } = "Vast Seas";
 
     [SettingInfo(Category = SettingsCategory.General, Name = "On startup",
@@ -224,12 +220,13 @@ public sealed partial class BrowserSettings : ObservableObject
         Description = "Ask the search provider for suggestions while typing in the address bar. What you type is sent to Google as you type.")]
     public bool SearchSuggestionsEnabled { get; set => SetProperty(ref field, value); } = true;
 
-    private static string[] GetComboOptions(MainWindow mainWindow)
-    {
-        return mainWindow.Instance.DefaultThemeObject.Themes.Keys
-            .Select(k => k.ToString())
-            .ToArray();
-    }
+    #endregion
+
+    #region Appearance
+    [JsonIgnore]
+    [SettingInfo(Category = SettingsCategory.Appearance, Name = "Theme",
+        Description = "The colors of every part of FoxyBrowser's own UI: bars, menus, prompts, panels and this page. Pick a built-in theme, or make your own and share it as a .foxytheme file. The preview uses this window's home page picture.")]
+    public ThemeController? Themes;
     #endregion
 
     #region Privacy
@@ -263,40 +260,40 @@ public sealed partial class BrowserSettings : ObservableObject
         Description = "After you allow or block a site's request: Ask follows up with \"Remember this?\", Always saves it straight away, Never applies it to that one request only.")]
     public PermissionRememberMode RememberPermissionChoices { get; set => SetProperty(ref field, value); } = PermissionRememberMode.Ask;
 
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "Location", Description = "When a site wants to know your location.")]
+    [SettingInfo(Category = SettingsCategory.Permissions, Subheading = "Defaults for site requests", Name = "Location", Description = "When a site wants to know your location.")]
     public PermissionDefault LocationPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
 
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "Camera", Description = "When a site wants to use your camera.")]
+    [SettingInfo(Category = SettingsCategory.Permissions, Subheading = "Defaults for site requests", Name = "Camera", Description = "When a site wants to use your camera.")]
     public PermissionDefault CameraPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
 
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "Microphone", Description = "When a site wants to use your microphone.")]
+    [SettingInfo(Category = SettingsCategory.Permissions, Subheading = "Defaults for site requests", Name = "Microphone", Description = "When a site wants to use your microphone.")]
     public PermissionDefault MicrophonePermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
 
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "Notifications", Description = "When a site wants to show notifications.")]
+    [SettingInfo(Category = SettingsCategory.Permissions, Subheading = "Defaults for site requests", Name = "Notifications", Description = "When a site wants to show notifications.")]
     public PermissionDefault NotificationsPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
 
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "Clipboard", Description = "When a site wants to read text and images you copied.")]
+    [SettingInfo(Category = SettingsCategory.Permissions, Subheading = "Defaults for site requests", Name = "Clipboard", Description = "When a site wants to read text and images you copied.")]
     public PermissionDefault ClipboardReadPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
 
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "Motion sensors", Description = "When a site wants to use motion and light sensors.")]
+    [SettingInfo(Category = SettingsCategory.Permissions, Subheading = "Defaults for site requests", Name = "Motion sensors", Description = "When a site wants to use motion and light sensors.")]
     public PermissionDefault SensorsPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Allow;
 
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "Automatic downloads", Description = "When a site tries to download several files at once.")]
+    [SettingInfo(Category = SettingsCategory.Permissions, Subheading = "Defaults for site requests", Name = "Automatic downloads", Description = "When a site tries to download several files at once.")]
     public PermissionDefault AutomaticDownloadsPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
 
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "File editing", Description = "When a site wants to edit files or folders on your device.")]
+    [SettingInfo(Category = SettingsCategory.Permissions, Subheading = "Defaults for site requests", Name = "File editing", Description = "When a site wants to edit files or folders on your device.")]
     public PermissionDefault FileEditingPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
 
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "Autoplay", Description = "When a site wants to play media with sound automatically.")]
+    [SettingInfo(Category = SettingsCategory.Permissions, Subheading = "Defaults for site requests", Name = "Autoplay", Description = "When a site wants to play media with sound automatically.")]
     public PermissionDefault AutoplayPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Allow;
 
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "Local fonts", Description = "When a site wants to use fonts installed on your computer.")]
+    [SettingInfo(Category = SettingsCategory.Permissions, Subheading = "Defaults for site requests", Name = "Local fonts", Description = "When a site wants to use fonts installed on your computer.")]
     public PermissionDefault LocalFontsPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
 
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "MIDI devices", Description = "When a site wants full control of MIDI devices.")]
+    [SettingInfo(Category = SettingsCategory.Permissions, Subheading = "Defaults for site requests", Name = "MIDI devices", Description = "When a site wants full control of MIDI devices.")]
     public PermissionDefault MidiPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
 
-    [SettingInfo(Category = SettingsCategory.Permissions, Name = "Window management", Description = "When a site wants to open and place windows on all your displays.")]
+    [SettingInfo(Category = SettingsCategory.Permissions, Subheading = "Defaults for site requests", Name = "Window management", Description = "When a site wants to open and place windows on all your displays.")]
     public PermissionDefault WindowManagementPermission { get; set => SetProperty(ref field, value); } = PermissionDefault.Ask;
 
     [JsonIgnore]
@@ -389,6 +386,12 @@ public sealed partial class BrowserSettings : ObservableObject
     // Claude Doc
     /// <summary>The chat panel's system prompt for new chats; empty uses <see cref="AiChat.DefaultSystemPrompt"/>, so edits to the default still reach users who never changed it.</summary>
     public string AiSystemPrompt { get; set => SetProperty(ref field, value); } = "";
+
+    // Claude Doc
+    /// <summary>What the user wants the assistant to know about them and how they like answers; sent after the system prompt of new chats. Empty sends nothing.</summary>
+    public string AiPreferences { get; set => SetProperty(ref field, value); } = "";
+
+    public double AiPanelWidth { get; set => SetProperty(ref field, value); } = 450;
     #endregion
 
     #region WebView2

@@ -41,6 +41,12 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
     /// <summary>Unique for this run across every instance, like tab ids; the assistant's window_id.</summary>
     public int WindowNumber { get; } = System.Threading.Interlocked.Increment(ref _windowCounter);
 
+    // Claude Doc
+    /// <summary>The home page's picture, which also shows behind this window's bars; null while none can be loaded.</summary>
+    public Uri? HomeImageUri { get; private set; }
+
+    public event Action<Uri?>? HomeImageChanged;
+
     public Action<InfoGetter.SearchEngine> SearchEngineChangeRequested;
     
     // private VisualCaptureHelper? _captureHelper;
@@ -111,6 +117,10 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
         
         // link events from chat window
         ChatWindow.CloseRequested += () => TabHolder.Margin = TabHolder.Margin with { Right = 0 };
+        ChatWindow.WidthChanged += width =>
+        {
+            if (ChatWindow.Visibility == Visibility.Visible) TabHolder.Margin = TabHolder.Margin with { Right = width };
+        };
         
         // link events from the instance
         instance.Cache.PropertyChanged += (_, _) => HandleCacheChanged();
@@ -633,8 +643,8 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
 
     private void AssistantClick()
     {
-        ChatWindow.Visibility = Visibility.Visible;
-        TabHolder.Margin = TabHolder.Margin with { Right = 450 };
+        ChatWindow.Open();
+        TabHolder.Margin = TabHolder.Margin with { Right = ChatWindow.PanelWidth };
     }
 
     private void InstancesClick()
@@ -986,6 +996,8 @@ public sealed partial class MainWindow : WinUIEx.WindowEx
 
     private void HomePage_OnHomeImageUrlChanged(Uri? obj)
     {
-        BackImage.Source = obj is null ? null : new BitmapImage(new Uri(obj.ToString())); { };
+        BackImage.Source = obj is null ? null : new BitmapImage(new Uri(obj.ToString()));
+        HomeImageUri = obj;
+        HomeImageChanged?.Invoke(obj);
     }
 }

@@ -10,66 +10,82 @@
     xmlns:material="using:Material.Icons.WinUI3"
     mc:Ignorable="d">
     <Grid x:Name="Root" CornerRadius="8,0,8,8" BorderThickness="2" Width="450" HorizontalAlignment="Right">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+        <Grid x:Name="Panel">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" ColumnSpacing="2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" x:Name="TitleText" Height="26" Text="Chat: Loading" VerticalAlignment="Center" HorizontalTextAlignment="Center" FontSize="20" FontWeight="700" TextTrimming="CharacterEllipsis"/>
-            <generic:FIconButton Grid.Column="1" Height="26" Width="26" x:Name="ButtonSettings" ToolTipText="Assistant settings" CornerRadius="5" Content="{material:MaterialIconExt Kind=Cog}" OnClick="ButtonSettings_OnClick"/>
-            <generic:FIconButton Grid.Column="2" Height="26" Width="26" x:Name="ButtonHistory" ToolTipText="Saved chats" CornerRadius="5" Content="{material:MaterialIconExt Kind=History}" OnClick="ButtonHistory_OnClick"/>
-            <generic:FIconButton Grid.Column="3" Height="26" Width="26" x:Name="ButtonClose" ToolTipText="Close the panel" CornerRadius="5" Content="{material:MaterialIconExt Kind=ArrowCollapseRight}" OnClick="ButtonClose_OnClick"/>
+            <Grid Grid.Row="0" ColumnSpacing="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" x:Name="TitleText" Height="26" Text="Chat: Loading" VerticalAlignment="Center" HorizontalTextAlignment="Center" FontSize="20" FontWeight="700" TextTrimming="CharacterEllipsis"/>
+                <generic:FIconButton Grid.Column="1" Height="26" Width="26" x:Name="ButtonSettings" ToolTipText="Assistant settings" CornerRadius="5" Content="{material:MaterialIconExt Kind=Cog}" OnClick="ButtonSettings_OnClick"/>
+                <generic:FIconButton Grid.Column="2" Height="26" Width="26" x:Name="ButtonHistory" ToolTipText="Saved chats" CornerRadius="5" Content="{material:MaterialIconExt Kind=History}" OnClick="ButtonHistory_OnClick"/>
+                <generic:FIconButton Grid.Column="3" Height="26" Width="26" x:Name="ButtonCollapse" ToolTipText="Shrink the panel to a strip" CornerRadius="5" Content="{material:MaterialIconExt Kind=ChevronDoubleRight}" OnClick="ButtonCollapse_OnClick"/>
+                <generic:FIconButton Grid.Column="4" Height="26" Width="26" x:Name="ButtonClose" ToolTipText="Close the panel" CornerRadius="5" Content="{material:MaterialIconExt Kind=ArrowCollapseRight}" OnClick="ButtonClose_OnClick"/>
+            </Grid>
+
+            <!-- what the next message uses: model, effort (Claude only) and permission mode -->
+            <Grid Grid.Row="1" ColumnSpacing="4" Margin="5,4,5,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <generic:FTextButton Grid.Column="0" x:Name="ButtonModel" Height="26" CornerRadius="5" HorizontalAlignment="Stretch" ContentHorizontalAlignment="Left" Icon="{material:MaterialIconExt Kind=Creation}" ButtonText="Model" OnClick="ButtonModel_OnClick"/>
+                <generic:FTextButton Grid.Column="1" x:Name="ButtonEffort" Height="26" CornerRadius="5" Icon="{material:MaterialIconExt Kind=Brain}" ButtonText="Medium" OnClick="ButtonEffort_OnClick"/>
+                <generic:FIconButton Grid.Column="2" x:Name="ButtonMode" Width="26" Height="26" CornerRadius="5" Content="{material:MaterialIconExt Kind=Eye}" OnClick="ButtonMode_OnClick"/>
+            </Grid>
+
+            <!-- tokens and estimated cost of the open chat, and the month's Claude spend (hover for details) -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="5,0,5,4">
+                <TextBlock x:Name="UsageText" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="BillingText" FontSize="12" VerticalAlignment="Center">
+                    <Hyperlink x:Name="BillingLink" UnderlineStyle="None" Click="BillingLink_OnClick">Credits</Hyperlink>
+                </TextBlock>
+            </StackPanel>
+
+            <TextBlock Grid.Row="3" x:Name="MText" Text="Ask anything, or ask me to open, group or navigate your tabs." Visibility="Collapsed" HorizontalTextAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="10"/>
+            <ScrollViewer Grid.Row="3"
+                          x:Name="Scroller"
+                          VerticalScrollBarVisibility="Hidden"
+                          HorizontalScrollBarVisibility="Disabled"
+                          HorizontalAlignment="Stretch"
+                          ZoomMode="Disabled">
+                <StackPanel x:Name="MessageList"/>
+            </ScrollViewer>
+
+            <!-- Enter sends; Shift+Enter or Ctrl+Enter start a new line. The box grows up to MaxHeight, then scrolls. -->
+            <Grid Grid.Row="4" ColumnSpacing="4" Margin="0,4,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <generic:FTextInput Grid.Column="0" x:Name="Input" MinHeight="26" MaxHeight="160" PlaceHolderText="Ask anything (Shift+Enter for a new line)" EnterPressed="Input_OnEnterPressed"/>
+                <generic:FIconButton Grid.Column="1" Width="26" Height="26" VerticalAlignment="Bottom" x:Name="ButtonSend" Content="{material:MaterialIconExt Kind=Send}" OnClick="ButtonSend_OnClick"/>
+                <generic:FTextButton Grid.Column="0" Grid.ColumnSpan="2" Height="26" CornerRadius="5" x:Name="ButtonNewChat" Icon="{material:MaterialIconExt Kind=Plus}" ButtonText="New Chat" OnClick="ButtonNewChat_OnClick" Visibility="Collapsed"/>
+            </Grid>
         </Grid>
 
-        <!-- what the next message uses: model, effort (Claude only) and permission mode -->
-        <Grid Grid.Row="1" ColumnSpacing="4" Margin="5,4,5,2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <generic:FTextButton Grid.Column="0" x:Name="ButtonModel" Height="26" CornerRadius="5" HorizontalAlignment="Stretch" ContentHorizontalAlignment="Left" Icon="{material:MaterialIconExt Kind=Creation}" ButtonText="Model" OnClick="ButtonModel_OnClick"/>
-            <generic:FTextButton Grid.Column="1" x:Name="ButtonEffort" Height="26" CornerRadius="5" Icon="{material:MaterialIconExt Kind=Brain}" ButtonText="Medium" OnClick="ButtonEffort_OnClick"/>
-            <generic:FIconButton Grid.Column="2" x:Name="ButtonMode" Width="26" Height="26" CornerRadius="5" Content="{material:MaterialIconExt Kind=Eye}" OnClick="ButtonMode_OnClick"/>
-        </Grid>
-
-        <!-- tokens and estimated cost of the open chat, and the month's Claude spend (hover for details) -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="5,0,5,4">
-            <TextBlock x:Name="UsageText" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <TextBlock x:Name="BillingText" FontSize="12" VerticalAlignment="Center">
-                <Hyperlink x:Name="BillingLink" UnderlineStyle="None" Click="BillingLink_OnClick">Credits</Hyperlink>
-            </TextBlock>
+        <!-- the panel shrunk to a strip: a reply keeps streaming behind it -->
+        <StackPanel x:Name="Sliver" Visibility="Collapsed" Spacing="2" VerticalAlignment="Top">
+            <generic:FIconButton Height="26" Width="26" x:Name="ButtonExpand" ToolTipText="Expand the assistant" CornerRadius="5" Content="{material:MaterialIconExt Kind=ChevronDoubleLeft}" OnClick="ButtonExpand_OnClick"/>
+            <generic:FIconButton Height="26" Width="26" x:Name="ButtonSliverClose" ToolTipText="Close the panel" CornerRadius="5" Content="{material:MaterialIconExt Kind=ArrowCollapseRight}" OnClick="ButtonClose_OnClick"/>
         </StackPanel>
 
-        <TextBlock Grid.Row="3" x:Name="MText" Text="Ask anything, or ask me to open, group or navigate your tabs." Visibility="Collapsed" HorizontalTextAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="10"/>
-        <ScrollViewer Grid.Row="3"
-                      x:Name="Scroller"
-                      VerticalScrollBarVisibility="Hidden"
-                      HorizontalScrollBarVisibility="Disabled"
-                      HorizontalAlignment="Stretch"
-                      ZoomMode="Disabled">
-            <StackPanel x:Name="MessageList"/>
-        </ScrollViewer>
-
-        <!-- Enter sends; Shift+Enter or Ctrl+Enter start a new line. The box grows up to MaxHeight, then scrolls. -->
-        <Grid Grid.Row="4" ColumnSpacing="4" Margin="0,4,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <generic:FTextInput Grid.Column="0" x:Name="Input" MinHeight="26" MaxHeight="160" PlaceHolderText="Ask anything (Shift+Enter for a new line)" EnterPressed="Input_OnEnterPressed"/>
-            <generic:FIconButton Grid.Column="1" Width="26" Height="26" VerticalAlignment="Bottom" x:Name="ButtonSend" Content="{material:MaterialIconExt Kind=Send}" OnClick="ButtonSend_OnClick"/>
-            <generic:FTextButton Grid.Column="0" Grid.ColumnSpan="2" Height="26" CornerRadius="5" x:Name="ButtonNewChat" Icon="{material:MaterialIconExt Kind=Plus}" ButtonText="New Chat" OnClick="ButtonNewChat_OnClick" Visibility="Collapsed"/>
-        </Grid>
+        <!-- drag the left edge to resize; dragging it nearly shut shrinks the panel to the strip -->
+        <Border x:Name="ResizeGrip" Width="6" HorizontalAlignment="Left" Background="Transparent"
+                PointerEntered="ResizeGrip_OnPointerEntered" PointerExited="ResizeGrip_OnPointerExited"
+                PointerPressed="ResizeGrip_OnPointerPressed" PointerMoved="ResizeGrip_OnPointerMoved"
+                PointerReleased="ResizeGrip_OnPointerReleased" PointerCaptureLost="ResizeGrip_OnPointerCaptureLost"/>
     </Grid>
 </UserControl>

@@ -3,19 +3,10 @@ using FoxyBrowser716.DataObjects.Basic;
 
 namespace FoxyBrowser716.StaticData;
 
-public class DefaultThemes
+public static class DefaultThemes
 {
-	public Dictionary<string, Theme> Themes = new()
-	{
-		["Dark Mode"] = DarkMode,
-		["Light Mode"] = LightMode,
-		["Daybreak Foxy"] = DaybreakFoxy,
-		["Nightfall Foxy"] = NightfallFoxy,
-		["Vast Seas"] = VastSea,
-		["Vast Skies"] = VastSky,
-	};
 
-	public static Theme DarkMode = new()
+	public static readonly Theme DarkMode = new()
 	{
 		PrimaryBackgroundColor = Color.FromArgb(255, 54, 56, 64),
 		SecondaryBackgroundColor = Color.FromArgb(255, 43, 44, 51),
@@ -28,7 +19,7 @@ public class DefaultThemes
 		YesColor = Color.FromArgb(255, 0, 225, 0),
 		NoColor = Color.FromArgb(255, 225, 0, 0),
 	};
-	public static Theme LightMode = new()
+	public static readonly Theme LightMode = new()
 	{
 		PrimaryBackgroundColor = Color.FromArgb(255, 255, 255, 255),
 		SecondaryBackgroundColor = Color.FromArgb(255, 225, 225, 225),
@@ -41,7 +32,7 @@ public class DefaultThemes
 		YesColor = Color.FromArgb(255, 0, 225, 0),
 		NoColor = Color.FromArgb(255, 225, 0, 0),
 	};
-	public static Theme DaybreakFoxy = new()
+	public static readonly Theme DaybreakFoxy = new()
 	{
 		PrimaryBackgroundColor = Color.FromArgb(255, 255, 181, 92),
 		SecondaryBackgroundColor = Color.FromArgb(255, 255, 170, 75),
@@ -54,7 +45,7 @@ public class DefaultThemes
 		YesColor = Color.FromArgb(255, 0, 225, 0),
 		NoColor = Color.FromArgb(255, 225, 0, 0),
 	};
-	public static Theme NightfallFoxy = new()
+	public static readonly Theme NightfallFoxy = new()
 	{
 		PrimaryBackgroundColor = Color.FromArgb(255, 30, 0, 73),
 		SecondaryBackgroundColor = Color.FromArgb(255, 0, 6, 38),
@@ -67,7 +58,7 @@ public class DefaultThemes
 		YesColor = Color.FromArgb(255, 0, 225, 0),
 		NoColor = Color.FromArgb(255, 225, 0, 0),
 	};
-	public static Theme VastSea = new()
+	public static readonly Theme VastSea = new()
 	{
 		PrimaryBackgroundColor = Color.FromArgb(255, 40, 60, 80),
 		SecondaryBackgroundColor = Color.FromArgb(255, 20, 40, 60),
@@ -80,7 +71,7 @@ public class DefaultThemes
 		YesColor = Color.FromArgb(255, 0, 225, 0),
 		NoColor = Color.FromArgb(255, 225, 0, 0),
 	};
-	public static Theme VastSky = new()
+	public static readonly Theme VastSky = new()
 	{
 		PrimaryBackgroundColor = Color.FromArgb(255, 205, 230, 255),
 		SecondaryBackgroundColor = Color.FromArgb(255, 185, 210, 235),
@@ -93,4 +84,16 @@ public class DefaultThemes
 		YesColor = Color.FromArgb(255, 0, 225, 0),
 		NoColor = Color.FromArgb(255, 225, 0, 0),
 	};
+
+	// Claude Doc
+	/// <summary>In gallery order. The names are also the ids stored in settings, so renaming one orphans saved choices.</summary>
+	public static readonly (string name, Theme theme)[] BuiltIn =
+	[
+		("Dark Mode", DarkMode),
+		("Light Mode", LightMode),
+		("Daybreak Foxy", DaybreakFoxy),
+		("Nightfall Foxy", NightfallFoxy),
+		("Vast Seas", VastSea),
+		("Vast Skies", VastSky),
+	];
 }

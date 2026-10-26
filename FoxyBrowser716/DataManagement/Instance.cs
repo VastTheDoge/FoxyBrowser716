@@ -16,7 +16,6 @@ public partial class Instance : ObservableObject
 	public string Name { get; private set; }
 	
 	//TODO:
-	public DefaultThemes DefaultThemeObject { get; } = new();
 	
 	public BrowserSettings Settings => _settings.Item;
 	public InstanceCache Cache => _cache.Item;
@@ -114,7 +113,7 @@ public partial class Instance : ObservableObject
 		switch (propertyChangedEventArgs.PropertyName)
 		{
 			case nameof(BrowserSettings.ThemeName):
-				if (DefaultThemeObject.Themes.TryGetValue(Settings.ThemeName, out var theme)) CurrentTheme = theme;
+				CurrentTheme = ThemeManager.Resolve(Settings.ThemeName);
 				break;
 			default:
 				break;
@@ -164,7 +163,9 @@ public partial class Instance : ObservableObject
 		pinnedExtensions = new Lazy<ObservableCollection<Extension>>(GetAndVerifyPinnedExtensions);
 		
 		_settings.Item.PropertyChanged += HandleSettingsChange;
-		if (DefaultThemeObject.Themes.TryGetValue(Settings.ThemeName, out var theme)) CurrentTheme = theme;
+		CurrentTheme = ThemeManager.Resolve(Settings.ThemeName);
+		//C a custom theme edited or deleted while in use recolors every window of the instance
+		ThemeManager.Changed += () => CurrentTheme = ThemeManager.Resolve(Settings.ThemeName);
 	}
 	
 	// Claude Doc
